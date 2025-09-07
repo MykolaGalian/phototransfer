@@ -78,22 +78,100 @@ public class PhotoTransferServiceTests
     }
 
     [Test]
-    public void PlanTransfer_DuplicateFilenames_ShouldAddNumericSuffixes()
+    public void PlanTransfer_DuplicateFilenames_ShouldChooseLargerFile()
     {
         // Arrange
         var photos = new List<PhotoMetadata>
         {
-            CreateTestPhoto("photo.jpg"),
-            CreateTestPhoto("photo.jpg", "hash2")
+            CreateTestPhoto("photo.jpg", "hash1", fileSize: 1024),
+            CreateTestPhoto("photo.jpg", "hash2", fileSize: 2048) // Larger file
         };
 
         // Act
         var operations = _service.PlanTransfer(photos, _testDirectory);
 
         // Assert
-        Assert.That(operations.Count, Is.EqualTo(2));
+        Assert.That(operations.Count, Is.EqualTo(1));
+        Assert.That(operations[0].Photo.Hash, Is.EqualTo("hash2")); // Larger file should be chosen
+        Assert.That(operations[0].Photo.FileSize, Is.EqualTo(2048));
         Assert.That(operations[0].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "photo.jpg")));
-        Assert.That(operations[1].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "photo(1).jpg")));
+    }
+
+    [Test]
+    public void PlanTransfer_DuplicateFilenames_SmallerFileFirst_ShouldReplaceWithLarger()
+    {
+        // Arrange
+        var photos = new List<PhotoMetadata>
+        {
+            CreateTestPhoto("photo.jpg", "hash1", fileSize: 2048), // Larger file first
+            CreateTestPhoto("photo.jpg", "hash2", fileSize: 1024)  // Smaller file second
+        };
+
+        // Act
+        var operations = _service.PlanTransfer(photos, _testDirectory);
+
+        // Assert
+        Assert.That(operations.Count, Is.EqualTo(1));
+        Assert.That(operations[0].Photo.Hash, Is.EqualTo("hash1")); // Larger file should remain
+        Assert.That(operations[0].Photo.FileSize, Is.EqualTo(2048));
+    }
+
+    [Test]
+    public void PlanTransfer_DuplicateFilenames_EqualSizes_ShouldKeepFirst()
+    {
+        // Arrange
+        var photos = new List<PhotoMetadata>
+        {
+            CreateTestPhoto("photo.jpg", "hash1", fileSize: 1024),
+            CreateTestPhoto("photo.jpg", "hash2", fileSize: 1024) // Same size
+        };
+
+        // Act
+        var operations = _service.PlanTransfer(photos, _testDirectory);
+
+        // Assert
+        Assert.That(operations.Count, Is.EqualTo(1));
+        Assert.That(operations[0].Photo.Hash, Is.EqualTo("hash1")); // First file should be kept
+    }
+
+    [Test]
+    public void PlanTransfer_ExistingFileInTarget_LargerNewFile_ShouldOverwrite()
+    {
+        // Arrange
+        var existingFilePath = Path.Combine(_testDirectory, "photo.jpg");
+        File.WriteAllText(existingFilePath, "small content"); // Create smaller existing file
+        
+        var photos = new List<PhotoMetadata>
+        {
+            CreateTestPhoto("photo.jpg", "hash1", fileSize: 2048) // Larger new file
+        };
+
+        // Act
+        var operations = _service.PlanTransfer(photos, _testDirectory);
+
+        // Assert
+        Assert.That(operations.Count, Is.EqualTo(1));
+        Assert.That(operations[0].Photo.FileSize, Is.EqualTo(2048));
+        Assert.That(operations[0].TargetPath, Is.EqualTo(existingFilePath));
+    }
+
+    [Test]
+    public void PlanTransfer_ExistingFileInTarget_SmallerNewFile_ShouldSkip()
+    {
+        // Arrange
+        var existingFilePath = Path.Combine(_testDirectory, "photo.jpg");
+        File.WriteAllText(existingFilePath, "much larger content that exceeds the new file size"); // Create larger existing file
+        
+        var photos = new List<PhotoMetadata>
+        {
+            CreateTestPhoto("photo.jpg", "hash1", fileSize: 10) // Smaller new file
+        };
+
+        // Act
+        var operations = _service.PlanTransfer(photos, _testDirectory);
+
+        // Assert
+        Assert.That(operations.Count, Is.EqualTo(0)); // Should skip the smaller file
     }
 
     [Test]
@@ -160,16 +238,19 @@ public class PhotoTransferServiceTests
         };
     }
 
-    private PhotoMetadata CreateTestPhoto(string fileName, string? hash = null, DateTime? creationDate = null)
+    private PhotoMetadata CreateTestPhoto(string fileName, string? hash = null, DateTime? creationDate = null, long fileSize = 1024)
     {
+        var effectiveDate = creationDate ?? DateTime.Now;
         return new PhotoMetadata
         {
             FilePath = Path.Combine(_testDirectory, fileName),
             FileName = fileName,
             Extension = Path.GetExtension(fileName).ToLowerInvariant(),
-            FileSize = 1024,
+            FileSize = fileSize,
             Hash = hash ?? $"hash-{fileName}",
-            CreationDate = creationDate ?? DateTime.Now,
+            CreationDate = effectiveDate,
+            ModificationDate = effectiveDate,
+            EffectiveDate = effectiveDate,
             IsTransferred = false
         };
     }

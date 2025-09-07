@@ -85,7 +85,7 @@ public class PhotoTransferTests
     }
 
     [Test]
-    public void TransferPhotos_WithDuplicateNames_ShouldHandleNumericSuffixes()
+    public void TransferPhotos_WithDuplicateNames_ShouldChooseLargestFile()
     {
         // Arrange: Create scenario with duplicate filenames
         var sourceDir = CreateDirectoryWithDuplicates();
@@ -95,7 +95,7 @@ public class PhotoTransferTests
         var targetBaseDir = Path.Combine(_testDirectory, "output");
 
         // Act: Transfer photos with duplicate names
-        var transferService = new PhotoTransferService(); // This class doesn't exist yet
+        var transferService = new PhotoTransferService();
         var metadataStore = new MetadataStore();
         var index = metadataStore.LoadIndex(metadataPath);
         var photos = transferService.GetPhotosForPeriod(index, timePeriod);
@@ -103,24 +103,24 @@ public class PhotoTransferTests
         var operations = transferService.PlanTransfer(photos, targetDir);
         transferService.ExecuteTransfer(operations);
 
-        // Assert: Should handle duplicates with numeric suffixes
+        // Assert: Should choose only the largest file, not create suffixed duplicates
         var expectedTargetDir = Path.Combine(targetBaseDir, "2023-08");
+        
+        // Check if operations were created and executed
+        Assert.That(operations.Count, Is.EqualTo(1), "Should plan transfer for only the largest file");
+        
+        // Verify directory exists (should be created during ExecuteTransfer)
+        Assert.That(Directory.Exists(expectedTargetDir), Is.True, "Target directory should be created");
+        
         var files = Directory.GetFiles(expectedTargetDir).Select(Path.GetFileName).ToList();
 
-        Assert.That(files.Count, Is.EqualTo(3), "Should transfer all 3 photos with duplicate names");
+        Assert.That(files.Count, Is.EqualTo(1), "Should transfer only the largest file");
+        Assert.That(files.Contains("vacation.jpg"), Is.True, "Should have original filename without suffix");
 
-        // Should have original and suffixed versions
-        Assert.That(files.Contains("vacation.jpg"), Is.True, "Should have original filename");
-        Assert.That(files.Contains("vacation(0).jpg"), Is.True, "Should have first duplicate with (0) suffix");
-        Assert.That(files.Contains("vacation(1).jpg"), Is.True, "Should have second duplicate with (1) suffix");
-
-        // Verify content is preserved (files should have different sizes/content)
-        var originalSize = new FileInfo(Path.Combine(targetDir, "vacation.jpg")).Length;
-        var duplicate0Size = new FileInfo(Path.Combine(targetDir, "vacation(0).jpg")).Length;
-        var duplicate1Size = new FileInfo(Path.Combine(targetDir, "vacation(1).jpg")).Length;
-
-        Assert.That(new[] { originalSize, duplicate0Size, duplicate1Size }.Distinct().Count(), Is.EqualTo(3),
-            "Duplicate files should have different content/sizes");
+        // Verify that the largest file (3000 bytes) was chosen
+        var transferredFile = Path.Combine(expectedTargetDir, "vacation.jpg");
+        var fileSize = new FileInfo(transferredFile).Length;
+        Assert.That(fileSize, Is.EqualTo(3000), "Should have chosen the largest file (3000 bytes)");
     }
 
     [Test]
@@ -337,45 +337,51 @@ public class PhotoTransferTests
     {
         var metadata = new
         {
-            indexedAt = DateTime.UtcNow,
-            workingDirectory = sourceDir,
-            version = "1.0.0",
-            totalCount = 3,
-            supportedExtensions = new[] { ".jpg" },
-            photos = new[]
+            IndexedAt = DateTime.UtcNow,
+            WorkingDirectory = sourceDir,
+            Version = "1.0.0",
+            TotalCount = 3,
+            SupportedExtensions = new[] { ".jpg" },
+            Photos = new[]
             {
                 new
                 {
-                    filePath = Path.Combine(sourceDir, "folder1", "vacation.jpg"),
-                    fileName = "vacation.jpg",
-                    creationDate = new DateTime(2023, 8, 1),
-                    fileSize = 1000L,
-                    extension = ".jpg",
-                    hash = "hash1",
-                    isTransferred = false,
-                    transferredTo = (string?)null
+                    FilePath = Path.Combine(sourceDir, "folder1", "vacation.jpg"),
+                    FileName = "vacation.jpg",
+                    CreationDate = new DateTime(2023, 8, 1),
+                    ModificationDate = new DateTime(2023, 8, 1),
+                    EffectiveDate = new DateTime(2023, 8, 1),
+                    FileSize = 1000L,
+                    Extension = ".jpg",
+                    Hash = "hash1",
+                    IsTransferred = false,
+                    TransferredTo = (string?)null
                 },
                 new
                 {
-                    filePath = Path.Combine(sourceDir, "folder2", "vacation.jpg"),
-                    fileName = "vacation.jpg",
-                    creationDate = new DateTime(2023, 8, 15),
-                    fileSize = 2000L,
-                    extension = ".jpg",
-                    hash = "hash2",
-                    isTransferred = false,
-                    transferredTo = (string?)null
+                    FilePath = Path.Combine(sourceDir, "folder2", "vacation.jpg"),
+                    FileName = "vacation.jpg",
+                    CreationDate = new DateTime(2023, 8, 15),
+                    ModificationDate = new DateTime(2023, 8, 15),
+                    EffectiveDate = new DateTime(2023, 8, 15),
+                    FileSize = 2000L,
+                    Extension = ".jpg",
+                    Hash = "hash2",
+                    IsTransferred = false,
+                    TransferredTo = (string?)null
                 },
                 new
                 {
-                    filePath = Path.Combine(sourceDir, "folder3", "vacation.jpg"),
-                    fileName = "vacation.jpg",
-                    creationDate = new DateTime(2023, 8, 30),
-                    fileSize = 3000L,
-                    extension = ".jpg",
-                    hash = "hash3",
-                    isTransferred = false,
-                    transferredTo = (string?)null
+                    FilePath = Path.Combine(sourceDir, "folder3", "vacation.jpg"),
+                    FileName = "vacation.jpg",
+                    CreationDate = new DateTime(2023, 8, 30),
+                    ModificationDate = new DateTime(2023, 8, 30),
+                    EffectiveDate = new DateTime(2023, 8, 30),
+                    FileSize = 3000L,
+                    Extension = ".jpg",
+                    Hash = "hash3",
+                    IsTransferred = false,
+                    TransferredTo = (string?)null
                 }
             }
         };

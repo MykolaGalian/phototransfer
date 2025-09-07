@@ -28,9 +28,39 @@ public class PhotoTransferService
 
         foreach (var photo in photos)
         {
-            var targetPath = GenerateTargetPath(targetDirectory, photo, operations);
-            var operation = new TransferOperation(photo, targetPath, transferType);
-            operations.Add(operation);
+            var existingOperation = FindDuplicateByName(operations, photo.FileName);
+            
+            if (existingOperation != null)
+            {
+                // If current photo is larger, replace the existing operation
+                if (photo.FileSize > existingOperation.Photo.FileSize)
+                {
+                    operations.Remove(existingOperation);
+                    var targetPath = GenerateTargetPath(targetDirectory, photo, operations);
+                    var operation = new TransferOperation(photo, targetPath, transferType);
+                    operations.Add(operation);
+                }
+                // Otherwise, skip this photo (keep the larger one)
+            }
+            else
+            {
+                // Check if file exists in target directory and compare sizes
+                var targetPath = Path.Combine(targetDirectory, photo.FileName);
+                
+                if (File.Exists(targetPath))
+                {
+                    var existingFileInfo = new FileInfo(targetPath);
+                    if (photo.FileSize <= existingFileInfo.Length)
+                    {
+                        // Skip this photo as existing file is equal or larger
+                        continue;
+                    }
+                    // Current photo is larger, so we'll overwrite
+                }
+                
+                var operation = new TransferOperation(photo, targetPath, transferType);
+                operations.Add(operation);
+            }
         }
 
         return operations;
@@ -67,10 +97,15 @@ public class PhotoTransferService
                 // Perform the file operation
                 if (operation.Type == TransferType.Copy)
                 {
-                    File.Copy(operation.Photo.FilePath, operation.TargetPath, overwrite: false);
+                    File.Copy(operation.Photo.FilePath, operation.TargetPath, overwrite: true);
                 }
                 else
                 {
+                    // For move operations, handle existing files by deleting them first
+                    if (File.Exists(operation.TargetPath))
+                    {
+                        File.Delete(operation.TargetPath);
+                    }
                     File.Move(operation.Photo.FilePath, operation.TargetPath);
                 }
 
@@ -100,45 +135,14 @@ public class PhotoTransferService
         }
     }
 
+    private TransferOperation? FindDuplicateByName(List<TransferOperation> operations, string fileName)
+    {
+        return operations.FirstOrDefault(op => 
+            Path.GetFileName(op.TargetPath).Equals(fileName, StringComparison.OrdinalIgnoreCase));
+    }
+
     private string GenerateTargetPath(string targetDirectory, PhotoMetadata photo, List<TransferOperation> existingOperations)
     {
-        var fileName = photo.FileName;
-        var targetPath = Path.Combine(targetDirectory, fileName);
-
-        // Check for conflicts with existing operations
-        var conflictCount = existingOperations.Count(op => 
-            Path.GetFileName(op.TargetPath).Equals(fileName, StringComparison.OrdinalIgnoreCase));
-
-        if (conflictCount > 0)
-        {
-            var extension = Path.GetExtension(fileName);
-            var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-            fileName = $"{nameWithoutExtension}({conflictCount}){extension}";
-            targetPath = Path.Combine(targetDirectory, fileName);
-        }
-
-        // Check for conflicts with existing files in target directory
-        while (File.Exists(targetPath))
-        {
-            var extension = Path.GetExtension(fileName);
-            var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
-            
-            // Extract existing suffix or start with 0
-            var match = System.Text.RegularExpressions.Regex.Match(nameWithoutExtension, @"^(.+)\((\d+)\)$");
-            if (match.Success)
-            {
-                var baseName = match.Groups[1].Value;
-                var currentNum = int.Parse(match.Groups[2].Value);
-                fileName = $"{baseName}({currentNum + 1}){extension}";
-            }
-            else
-            {
-                fileName = $"{nameWithoutExtension}(0){extension}";
-            }
-            
-            targetPath = Path.Combine(targetDirectory, fileName);
-        }
-
-        return targetPath;
+        return Path.Combine(targetDirectory, photo.FileName);
     }
 }
