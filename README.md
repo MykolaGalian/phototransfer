@@ -1,18 +1,32 @@
-# PhotoTransfer
+# MediaChrono (PhotoTransfer)
 
-A .NET 9 console application for organizing photos by creation date. PhotoTransfer scans directories for photo files, extracts metadata including creation dates, and transfers photos to organized date-based directory structures.
+A .NET 9 console application for intelligent media organization by creation date. MediaChrono scans directories for photo and video files, extracts comprehensive metadata including EXIF dates, and transfers media to organized date-based directory structures with smart duplicate handling.
 
 ## Features
 
-- **Photo Indexing**: Recursively scan directories for supported image/video/audio formats
+### 🎯 **Smart Media Processing**
+- **Comprehensive Metadata Extraction**: Extract dates from EXIF, video metadata, and filesystem timestamps
+- **Intelligent Date Selection**: Prioritize EXIF DateTimeOriginal over corrupted filesystem dates
+- **Placeholder Date Detection**: Automatically ignore common placeholder dates (1970-01-01, 2001-01-01, etc.)
+- **Duplicate-Aware Statistics**: Handle duplicates same as transfer operations (largest file wins)
+
+### 📊 **Advanced Analysis**
+- **Multi-Source Date Collection**: Store all discovered dates with their sources for debugging
+- **Period-Based Duplicate Filtering**: Filter duplicates within each time period, not globally
+- **Comprehensive Statistics**: View file statistics by date periods with accurate duplicate handling
+- **File Type Analysis**: Detailed breakdown of formats in your collection
+
+### 🗂️ **Intelligent Organization**
+- **Photo Indexing**: Recursively scan directories for supported image/video/audio formats  
 - **Incremental Indexing**: Progressive processing with 5000-record saves and resume capability
-- **Smart Date Detection**: Extract creation dates from EXIF data with file date fallback using earliest date
-- **Date-based Organization**: Transfer photos by year-month periods (YYYY-MM)
-- **Statistics & Analysis**: View file statistics by date periods and file type analysis
-- **Duplicate Handling**: Automatic numeric suffixes for duplicate filenames
+- **Date-based Organization**: Transfer media by year-month periods (YYYY-MM)
+- **Smart Duplicate Handling**: Select largest file when duplicates exist by filename
 - **Operation Modes**: Move (default) or copy files with dry-run support
+
+### ⚡ **Performance & Reliability**
 - **Incremental Updates**: Add new formats without reprocessing existing files
 - **Progress Visualization**: Visual feedback during all operations
+- **Resume Capability**: Continue interrupted indexing from where it stopped
 - **Cross-platform**: Self-contained executables for Windows, Linux, and macOS
 
 ## Supported Formats
@@ -42,6 +56,41 @@ A .NET 9 console application for organizing photos by creation date. PhotoTransf
 - MP4 Thumbnails (`.mp4_128x96`)
 
 *All formats support both uppercase and lowercase extensions (e.g., `.JPG`, `.jpg`, `.Mp4`, `.MP4`, `.M4A`, `.m4a`)*
+
+## Smart Date Selection
+
+MediaChrono uses an intelligent algorithm to select the most reliable date from multiple sources:
+
+### 📅 **Date Sources (in priority order):**
+
+1. **EXIF.DateTimeOriginal** - When the photo/video was originally captured
+2. **EXIF.DateTime** - General EXIF timestamp  
+3. **EXIF.DateTimeDigitized** - When the media was digitized
+4. **Video.CreationTime** - Video container creation time
+5. **FileSystem.Creation** - File creation date
+6. **FileSystem.LastWrite** - File modification date
+
+### 🧠 **Smart Selection Logic:**
+
+- **Placeholder Detection**: Ignores common placeholder dates (1970-01-01, 1980-01-01, 2000-01-01, 2001-01-01)
+- **EXIF Priority**: If filesystem date is >1 year older than EXIF date, prefers EXIF (handles corrupted filesystem dates)
+- **Oldest Valid Date**: When all dates are reliable, selects the oldest
+- **Fallback Strategy**: If only placeholder dates exist, selects oldest placeholder
+
+### 📊 **Date Information Storage:**
+
+All discovered dates are stored in the index with their sources:
+
+```json
+"allDates": [
+  {"date": "2025-09-10T00:07:26", "source": "FileSystem.Creation", "isPlaceholder": false},
+  {"date": "2006-04-27T16:15:41", "source": "EXIF.DateTimeOriginal", "isPlaceholder": false},
+  {"date": "2001-01-01T00:00:00", "source": "EXIF.DateTime", "isPlaceholder": true}
+],
+"effectiveDate": "2006-04-27T16:15:41"
+```
+
+This allows you to see exactly which dates were found and why a specific date was selected as the effective date.
 
 ## Installation
 
@@ -248,6 +297,11 @@ The indexing process creates incremental `.phototransfer-index-XXXX.json` files 
       "creationDate": "2023-06-15T14:30:00Z",
       "modificationDate": "2023-06-15T14:25:00Z",
       "effectiveDate": "2023-06-15T14:25:00Z",
+      "allDates": [
+        {"date": "2023-06-15T14:30:00Z", "source": "FileSystem.Creation", "isPlaceholder": false},
+        {"date": "2023-06-15T14:25:00Z", "source": "EXIF.DateTimeOriginal", "isPlaceholder": false},
+        {"date": "2023-06-15T14:25:00Z", "source": "EXIF.DateTime", "isPlaceholder": false}
+      ],
       "isTransferred": false,
       "transferredTo": null
     }
@@ -311,9 +365,10 @@ tests/PhotoTransfer.Tests/
 
 ### Dependencies
 
-- System.CommandLine: CLI interface framework
-- System.Text.Json: JSON serialization
-- NUnit: Testing framework (dev dependency)
+- **System.CommandLine**: CLI interface framework
+- **System.Text.Json**: JSON serialization with source generation for trimming support
+- **MetadataExtractor**: EXIF and video metadata extraction library
+- **NUnit**: Testing framework (dev dependency)
 
 ## License
 
