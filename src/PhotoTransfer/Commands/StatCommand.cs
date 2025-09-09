@@ -78,12 +78,17 @@ public static class StatCommand
         Console.WriteLine("Statistics by Period:");
         Console.WriteLine("====================");
         
+        // Group by period first, then filter duplicates within each period (same as transfer logic)
         var statistics = index.Photos
             .GroupBy(photo => new { Year = photo.EffectiveDate.Year, Month = photo.EffectiveDate.Month })
             .Select(group => new 
             {
                 Date = $"{group.Key.Year:0000}-{group.Key.Month:00}",
-                Amount = group.Count()
+                // Filter duplicates within this period by selecting the largest file for each filename
+                Amount = group
+                    .GroupBy(photo => photo.FileName, StringComparer.OrdinalIgnoreCase)
+                    .Select(fileGroup => fileGroup.OrderByDescending(photo => photo.FileSize).First())
+                    .Count()
             })
             .OrderBy(stat => stat.Date)
             .ToList();

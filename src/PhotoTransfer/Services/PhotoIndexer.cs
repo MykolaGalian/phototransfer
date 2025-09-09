@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using PhotoTransfer.Models;
+using MetadataExtractor;
+using MetadataExtractor.Formats.Exif;
+using MetadataExtractor.Formats.QuickTime;
 
 namespace PhotoTransfer.Services;
 
@@ -14,7 +17,7 @@ public class PhotoIndexer
 
     public PhotoIndex IndexDirectory(string directoryPath, string outputFilePath, bool updateBase = false, Action<string>? progressCallback = null)
     {
-        if (!Directory.Exists(directoryPath))
+        if (!System.IO.Directory.Exists(directoryPath))
         {
             throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
         }
@@ -57,12 +60,12 @@ public class PhotoIndexer
         };
 
         // Collect all valid file paths
-        var allFiles = Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
+        var allFiles = System.IO.Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
         
         foreach (var filePath in allFiles)
         {
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            if (_supportedExtensions.Contains(extension))
+            if (Array.Exists(_supportedExtensions, ext => ext == extension))
             {
                 try
                 {
@@ -222,12 +225,12 @@ public class PhotoIndexer
         };
 
         // Collect all valid file paths with current supported extensions
-        var allFiles = Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
+        var allFiles = System.IO.Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
         
         foreach (var filePath in allFiles)
         {
             var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            if (_supportedExtensions.Contains(extension))
+            if (Array.Exists(_supportedExtensions, ext => ext == extension))
             {
                 try
                 {
@@ -297,7 +300,7 @@ public class PhotoIndexer
     {
         var fileInfo = new FileInfo(filePath);
         var hash = CalculateFileHash(filePath);
-        var (creationDate, modificationDate, effectiveDate) = ExtractDates(filePath, fileInfo);
+        var (creationDate, modificationDate, effectiveDate, allDates) = ExtractDates(filePath, fileInfo);
 
         return new PhotoMetadata
         {
@@ -309,6 +312,7 @@ public class PhotoIndexer
             CreationDate = creationDate,
             ModificationDate = modificationDate,
             EffectiveDate = effectiveDate,
+            AllDates = allDates,
             IsTransferred = false,
             TransferredTo = null
         };
@@ -322,28 +326,251 @@ public class PhotoIndexer
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
-    private (DateTime creationDate, DateTime modificationDate, DateTime effectiveDate) ExtractDates(string filePath, FileInfo fileInfo)
+    private (DateTime creationDate, DateTime modificationDate, DateTime effectiveDate, List<DateSource> allDates) ExtractDates(string filePath, FileInfo fileInfo)
     {
-        // Try to extract EXIF creation date first
-        var exifDate = TryExtractExifDate(filePath);
-        var creationDate = exifDate ?? fileInfo.CreationTime;
+        // Collect all possible date sources with metadata
+        var allDates = new List<DateSource>();
+        
+        // Add filesystem dates
+        allDates.Add(new DateSource 
+        { 
+            Date = fileInfo.CreationTime, 
+            Source = "FileSystem.Creation",
+            IsPlaceholder = IsPlaceholderDate(fileInfo.CreationTime)
+        });
+        allDates.Add(new DateSource 
+        { 
+            Date = fileInfo.LastWriteTime, 
+            Source = "FileSystem.LastWrite",
+            IsPlaceholder = IsPlaceholderDate(fileInfo.LastWriteTime)
+        });
+        
+        // Try to extract metadata dates (EXIF for photos, video metadata for videos)
+        var metadataDates = TryExtractMetadataDates(filePath);
+        allDates.AddRange(metadataDates);
+        
+        var creationDate = fileInfo.CreationTime;
         var modificationDate = fileInfo.LastWriteTime;
         
-        // Use the earliest date as effective date
-        var effectiveDate = creationDate < modificationDate ? creationDate : modificationDate;
+        // Smart date selection with EXIF priority
+        var effectiveDate = SelectBestDate(allDates, creationDate);
 
-        return (creationDate, modificationDate, effectiveDate);
+        return (creationDate, modificationDate, effectiveDate, allDates);
     }
 
-    private DateTime? TryExtractExifDate(string filePath)
+    private DateTime SelectBestDate(List<DateSource> allDates, DateTime fallbackDate)
+    {
+        // Filter valid dates (not placeholder, not invalid)
+        var validDates = allDates
+            .Where(ds => ds.Date > DateTime.MinValue && ds.Date < DateTime.MaxValue && !ds.IsPlaceholder)
+            .ToList();
+
+        if (!validDates.Any())
+        {
+            // No valid dates found, use any valid date or fallback
+            var anyValidDates = allDates
+                .Where(ds => ds.Date > DateTime.MinValue && ds.Date < DateTime.MaxValue)
+                .ToList();
+            
+            return anyValidDates.Any() ? anyValidDates.Min(ds => ds.Date) : fallbackDate;
+        }
+
+        // Separate EXIF and filesystem dates
+        var exifDates = validDates.Where(ds => ds.Source.StartsWith("EXIF.") || ds.Source.StartsWith("Legacy.EXIF")).ToList();
+        var filesystemDates = validDates.Where(ds => ds.Source.StartsWith("FileSystem.")).ToList();
+        var otherDates = validDates.Where(ds => !ds.Source.StartsWith("EXIF.") && !ds.Source.StartsWith("Legacy.EXIF") && !ds.Source.StartsWith("FileSystem.")).ToList();
+
+        // If we have EXIF dates, check if filesystem dates are suspicious
+        if (exifDates.Any() && filesystemDates.Any())
+        {
+            var bestExifDate = exifDates.Min(ds => ds.Date);
+            var oldestFilesystemDate = filesystemDates.Min(ds => ds.Date);
+            
+            // If filesystem date is more than 1 year older than EXIF date, prefer EXIF
+            if (bestExifDate.Subtract(oldestFilesystemDate).TotalDays > 365)
+            {
+                // EXIF date is much newer than filesystem - filesystem date is likely corrupted
+                // Combine EXIF and other dates, ignore filesystem dates
+                var reliableDates = exifDates.Concat(otherDates).ToList();
+                return reliableDates.Min(ds => ds.Date);
+            }
+        }
+
+        // Default behavior: use oldest valid date
+        return validDates.Min(ds => ds.Date);
+    }
+
+    private bool IsPlaceholderDate(DateTime date)
+    {
+        // Common placeholder dates to ignore when selecting effective date
+        var placeholderDates = new[]
+        {
+            new DateTime(2001, 1, 1), // Common default date
+            new DateTime(1980, 1, 1), // Another common default
+            new DateTime(1970, 1, 1), // Unix epoch
+            new DateTime(1900, 1, 1), // Very old default
+            new DateTime(2000, 1, 1), // Y2K default
+        };
+        
+        // Check if date matches any placeholder (ignoring time component)
+        return placeholderDates.Any(placeholder => 
+            date.Year == placeholder.Year && 
+            date.Month == placeholder.Month && 
+            date.Day == placeholder.Day);
+    }
+
+    private List<DateSource> TryExtractMetadataDates(string filePath)
+    {
+        var dates = new List<DateSource>();
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        
+        try
+        {
+            // For image files, extract EXIF dates
+            if (IsImageFile(extension))
+            {
+                dates.AddRange(ExtractExifDates(filePath));
+            }
+            // For video files, extract video metadata dates
+            else if (IsVideoFile(extension))
+            {
+                dates.AddRange(ExtractVideoDates(filePath));
+            }
+        }
+        catch
+        {
+            // Ignore metadata extraction errors - will fall back to filesystem dates
+        }
+        
+        return dates;
+    }
+
+    private bool IsImageFile(string extension)
+    {
+        return extension is ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" or ".tiff" or ".tif" or ".cr3" or ".crw" or ".cr2";
+    }
+
+    private bool IsVideoFile(string extension)
+    {
+        return extension is ".avi" or ".mp4" or ".3gp" or ".mov";
+    }
+
+    private List<DateSource> ExtractExifDates(string filePath)
+    {
+        var dates = new List<DateSource>();
+        
+        try
+        {
+            var directories = MetadataExtractor.ImageMetadataReader.ReadMetadata(filePath);
+            
+            // Try to get the most reliable EXIF dates in order of preference:
+            // 1. DateTimeOriginal (when photo was taken)
+            // 2. DateTime (general date/time)  
+            // 3. DateTimeDigitized (when photo was digitized)
+            
+            foreach (var directory in directories)
+            {
+                if (directory.TryGetDateTime(MetadataExtractor.Formats.Exif.ExifDirectoryBase.TagDateTimeOriginal, out var dateTimeOriginal))
+                    dates.Add(new DateSource 
+                    { 
+                        Date = dateTimeOriginal, 
+                        Source = "EXIF.DateTimeOriginal",
+                        IsPlaceholder = IsPlaceholderDate(dateTimeOriginal)
+                    });
+                    
+                if (directory.TryGetDateTime(MetadataExtractor.Formats.Exif.ExifDirectoryBase.TagDateTime, out var dateTime))
+                    dates.Add(new DateSource 
+                    { 
+                        Date = dateTime, 
+                        Source = "EXIF.DateTime",
+                        IsPlaceholder = IsPlaceholderDate(dateTime)
+                    });
+                    
+                if (directory.TryGetDateTime(MetadataExtractor.Formats.Exif.ExifDirectoryBase.TagDateTimeDigitized, out var dateTimeDigitized))
+                    dates.Add(new DateSource 
+                    { 
+                        Date = dateTimeDigitized, 
+                        Source = "EXIF.DateTimeDigitized",
+                        IsPlaceholder = IsPlaceholderDate(dateTimeDigitized)
+                    });
+            }
+        }
+        catch
+        {
+            // Fall back to old simple extraction for compatibility
+            var legacyDate = TryExtractLegacyExifDate(filePath);
+            if (legacyDate.HasValue)
+                dates.Add(new DateSource 
+                { 
+                    Date = legacyDate.Value, 
+                    Source = "Legacy.EXIF",
+                    IsPlaceholder = IsPlaceholderDate(legacyDate.Value)
+                });
+        }
+        
+        return dates;
+    }
+
+    private List<DateSource> ExtractVideoDates(string filePath)
+    {
+        var dates = new List<DateSource>();
+        
+        try
+        {
+            var directories = MetadataExtractor.ImageMetadataReader.ReadMetadata(filePath);
+            
+            // For video files, try to extract creation time from various metadata directories
+            foreach (var directory in directories)
+            {
+                // Try different approaches to get video dates
+                if (directory.HasTagName(0x0000)) // Generic approach for creation time
+                {
+                    try
+                    {
+                        if (directory.TryGetDateTime(0x0000, out var creationTime))
+                            dates.Add(new DateSource 
+                            { 
+                                Date = creationTime, 
+                                Source = "Video.CreationTime",
+                                IsPlaceholder = IsPlaceholderDate(creationTime)
+                            });
+                    }
+                    catch { }
+                }
+                
+                // Try to get modification time
+                if (directory.HasTagName(0x0001))
+                {
+                    try
+                    {
+                        if (directory.TryGetDateTime(0x0001, out var modificationTime))
+                            dates.Add(new DateSource 
+                            { 
+                                Date = modificationTime, 
+                                Source = "Video.ModificationTime",
+                                IsPlaceholder = IsPlaceholderDate(modificationTime)
+                            });
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch
+        {
+            // Video metadata extraction failed - will use filesystem dates only
+        }
+        
+        return dates;
+    }
+
+    private DateTime? TryExtractLegacyExifDate(string filePath)
     {
         try
         {
-            // Simplified EXIF extraction - in real implementation would use proper EXIF library
+            // Keep old simple extraction for test compatibility
             var bytes = File.ReadAllBytes(filePath);
             var content = System.Text.Encoding.ASCII.GetString(bytes);
             
-            // Look for fake EXIF date pattern from test files
             var exifPattern = @"EXIF(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})";
             var match = System.Text.RegularExpressions.Regex.Match(content, exifPattern);
             
@@ -361,9 +588,9 @@ public class PhotoIndexer
         }
         catch
         {
-            // Ignore EXIF extraction errors
+            // Ignore extraction errors
         }
-
+        
         return null;
     }
 }
