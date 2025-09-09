@@ -8,19 +8,19 @@ A .NET 9 console application for intelligent media organization by creation date
 - **Comprehensive Metadata Extraction**: Extract dates from EXIF, video metadata, and filesystem timestamps
 - **Intelligent Date Selection**: Prioritize EXIF DateTimeOriginal over corrupted filesystem dates
 - **Placeholder Date Detection**: Automatically ignore common placeholder dates (1970-01-01, 2001-01-01, etc.)
-- **Duplicate-Aware Statistics**: Handle duplicates same as transfer operations (largest file wins)
+- **Period-Based Duplicate Filtering**: Statistics filter duplicates within each period (same as transfer logic)
 
 ### 📊 **Advanced Analysis**
 - **Multi-Source Date Collection**: Store all discovered dates with their sources for debugging
-- **Period-Based Duplicate Filtering**: Filter duplicates within each time period, not globally
-- **Comprehensive Statistics**: View file statistics by date periods with accurate duplicate handling
+- **Accurate Duplicate Handling**: Statistics match transfer behavior - filter duplicates per time period
+- **Comprehensive Statistics**: View file statistics by date periods with precise counts
 - **File Type Analysis**: Detailed breakdown of formats in your collection
 
 ### 🗂️ **Intelligent Organization**
 - **Photo Indexing**: Recursively scan directories for supported image/video/audio formats  
 - **Incremental Indexing**: Progressive processing with 5000-record saves and resume capability
 - **Date-based Organization**: Transfer media by year-month periods (YYYY-MM)
-- **Smart Duplicate Handling**: Select largest file when duplicates exist by filename
+- **Smart Duplicate Handling**: Select largest file when duplicates exist by filename within each time period
 - **Operation Modes**: Move (default) or copy files with dry-run support
 
 ### ⚡ **Performance & Reliability**
@@ -270,8 +270,7 @@ target-directory/
 └── YYYY-MM/
     ├── photo1.jpg
     ├── photo2.png
-    ├── duplicate-photo(0).jpg
-    └── duplicate-photo(1).jpg
+    └── largest-photo.jpg  # Only largest duplicate transferred per period
 ```
 
 ## Metadata Files
