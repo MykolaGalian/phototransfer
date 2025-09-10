@@ -85,10 +85,16 @@ public static class StatCommand
             {
                 Date = $"{group.Key.Year:0000}-{group.Key.Month:00}",
                 // Filter duplicates within this period by selecting the largest file for each filename
-                Amount = group
+                UniqueFiles = group
                     .GroupBy(photo => photo.FileName, StringComparer.OrdinalIgnoreCase)
                     .Select(fileGroup => fileGroup.OrderByDescending(photo => photo.FileSize).First())
-                    .Count()
+                    .ToList(),
+            })
+            .Select(group => new
+            {
+                Date = group.Date,
+                Amount = group.UniqueFiles.Count,
+                TotalSize = group.UniqueFiles.Sum(file => file.FileSize)
             })
             .OrderBy(stat => stat.Date)
             .ToList();
@@ -99,19 +105,32 @@ public static class StatCommand
             return;
         }
 
-        Console.WriteLine($"{"Date",-10} | {"Amount",8}");
-        Console.WriteLine(new string('-', 21));
+        Console.WriteLine($"{"Date",-10} | {"Amount",8} | {"Total Size",12}");
+        Console.WriteLine(new string('-', 35));
         
         foreach (var stat in statistics)
         {
-            Console.WriteLine($"{stat.Date,-10} | {stat.Amount,8}");
+            Console.WriteLine($"{stat.Date,-10} | {stat.Amount,8} | {FormatFileSize(stat.TotalSize),12}");
         }
         
-        Console.WriteLine(new string('-', 21));
-        Console.WriteLine($"{"Total",-10} | {statistics.Sum(s => s.Amount),8}");
+        Console.WriteLine(new string('-', 35));
+        Console.WriteLine($"{"Total",-10} | {statistics.Sum(s => s.Amount),8} | {FormatFileSize(statistics.Sum(s => s.TotalSize)),12}");
         
         Console.WriteLine();
         Console.WriteLine($"Index created: {index.IndexedAt:yyyy-MM-dd HH:mm:ss}");
         Console.WriteLine($"Working directory: {index.WorkingDirectory}");
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
     }
 }

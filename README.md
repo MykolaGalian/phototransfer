@@ -13,7 +13,7 @@ A .NET 9 console application for intelligent media organization by creation date
 ### 📊 **Advanced Analysis**
 - **Multi-Source Date Collection**: Store all discovered dates with their sources for debugging
 - **Accurate Duplicate Handling**: Statistics match transfer behavior - filter duplicates per time period
-- **Comprehensive Statistics**: View file statistics by date periods with precise counts
+- **Comprehensive Statistics**: View file statistics by date periods with precise counts and total file sizes
 - **File Type Analysis**: Detailed breakdown of formats in your collection
 
 ### 🗂️ **Intelligent Organization**
@@ -106,11 +106,30 @@ cd PhotoTransfer
 # Build the application
 dotnet build src/PhotoTransfer/PhotoTransfer.csproj -c Release
 
-# Run the executable
-./src/PhotoTransfer/bin/Release/net9.0/phototransfer
+# Run the executable (Windows)
+./src/PhotoTransfer/bin/Release/net9.0/win-x64/phototransfer.exe
+
+# Or on Linux/macOS
+./src/PhotoTransfer/bin/Release/net9.0/linux-x64/phototransfer
 ```
 
-### Cross-platform Publishing
+### Using Build Script (Recommended)
+
+```bash
+# Build for current platform
+./build.ps1
+
+# Clean build for current platform
+./build.ps1 -Clean
+
+# Build for all platforms (Windows, Linux, macOS)
+./build.ps1 -Runtime all
+
+# Debug build
+./build.ps1 -Configuration Debug
+```
+
+### Manual Cross-platform Publishing
 
 ```bash
 # Windows
@@ -148,10 +167,10 @@ phototransfer --index --update-base --verbose
 
 ### 2. View Statistics
 
-Analyze your media collection:
+Analyze your media collection with file counts and total sizes:
 
 ```bash
-# View statistics from existing index
+# View statistics from existing index (shows count and total size per period)
 phototransfer --stat
 
 # View statistics from specific index file
@@ -164,9 +183,22 @@ phototransfer --types
 phototransfer --types --directory /path/to/photos
 ```
 
+**Example Output:**
+```
+Statistics by Period:
+====================
+Date       |   Amount | Total Size
+-----------------------------------
+2023-01    |       45 |    1.23 GB
+2023-02    |       67 |    2.45 GB
+2023-03    |       23 |    891 MB
+-----------------------------------
+Total      |      135 |    4.54 GB
+```
+
 ### 3. Transfer Media Files
 
-Transfer files from a specific year-month period:
+#### Transfer Specific Period
 
 ```bash
 # Transfer photos from January 2023
@@ -188,6 +220,43 @@ phototransfer --transfer 2023-01 --verbose
 phototransfer --2023-01 --copy
 ```
 
+#### Transfer All Periods
+
+Transfer all photos organized automatically by their monthly periods:
+
+```bash
+# Transfer all photos organized by periods
+phototransfer --transfer --all
+
+# Copy all photos (preserve originals)
+phototransfer --transfer --all --copy
+
+# Preview all transfers without changes
+phototransfer --transfer --all --dry-run
+
+# Transfer all to custom directory with verbose output
+phototransfer --transfer --all --target /path/to/organized --copy --verbose
+```
+
+**Example Output:**
+```
+Found photos in 3 periods:
+  2023-01: 45 photos
+  2023-02: 67 photos  
+  2023-03: 23 photos
+
+Transferring 45 files for period 2023-01...
+Period 2023-01 transfer complete - 45 files transferred successfully
+
+Transferring 67 files for period 2023-02...
+Period 2023-02 transfer complete - 67 files transferred successfully
+
+Transferring 23 files for period 2023-03...
+Period 2023-03 transfer complete - 23 files transferred successfully
+
+All periods transfer complete - 135 files transferred successfully
+```
+
 ### Command Options
 
 #### Index Command (`--index`)
@@ -203,7 +272,9 @@ phototransfer --2023-01 --copy
 #### File Types Command (`--types`)
 - `--directory <path>`: Directory to analyze (default: current directory)
 
-#### Transfer Command (`--transfer <period>`)
+#### Transfer Command (`--transfer [<period>]`)
+- `<period>`: Date period in YYYY-MM format (optional when using --all)
+- `--all`: Transfer all photos organized by their monthly periods
 - `--copy`: Copy files instead of moving them
 - `--dry-run`: Preview transfers without making changes
 - `--target <directory>`: Target directory (default: `./phototransfer`)
@@ -220,13 +291,23 @@ phototransfer --types --directory ~/Photos
 # 2. Index all media files with progress
 phototransfer --index --directory ~/Photos --verbose --stat
 
-# 3. View statistics by date
+# 3. View statistics by date (with file counts and sizes)
 phototransfer --stat
 
-# 4. Preview transfers for specific period
+# 4. Preview transfers for all periods
+phototransfer --transfer --all --target ~/Organized --dry-run
+
+# 5. Perform actual transfer (copy mode) for all periods
+phototransfer --transfer --all --target ~/Organized --copy --verbose
+```
+
+### Single Period Workflow
+
+```bash
+# Preview transfers for specific period
 phototransfer --transfer 2023-06 --target ~/Organized --dry-run
 
-# 5. Perform actual transfer (copy mode)
+# Perform actual transfer (copy mode) for specific period
 phototransfer --transfer 2023-06 --target ~/Organized --copy --verbose
 ```
 
@@ -254,6 +335,7 @@ phototransfer --index --update-base --verbose --stat
 
 ### Organize Photos by Year
 
+#### Manual approach (period by period)
 ```bash
 # Transfer photos from different months to yearly folders
 phototransfer --transfer 2023-01 --target ~/Photos/2023 --copy
@@ -261,16 +343,43 @@ phototransfer --transfer 2023-02 --target ~/Photos/2023 --copy
 phototransfer --transfer 2023-03 --target ~/Photos/2023 --copy
 ```
 
+#### Automated approach (all periods at once)
+```bash
+# Transfer all photos organized by periods automatically
+phototransfer --transfer --all --target ~/Photos --copy
+
+# This creates:
+# ~/Photos/2023-01/
+# ~/Photos/2023-02/
+# ~/Photos/2023-03/
+# etc.
+```
+
 ## File Organization
 
 PhotoTransfer creates the following structure:
 
+#### Single Period Transfer
 ```
 target-directory/
 └── YYYY-MM/
     ├── photo1.jpg
     ├── photo2.png
     └── largest-photo.jpg  # Only largest duplicate transferred per period
+```
+
+#### All Periods Transfer (--all flag)
+```
+target-directory/
+├── 2023-01/
+│   ├── photo1.jpg
+│   └── photo2.png
+├── 2023-02/
+│   ├── video1.mp4
+│   └── photo3.jpg
+└── 2023-03/
+    ├── photo4.jpg
+    └── largest-duplicate.jpg  # Only largest duplicate per period
 ```
 
 ## Metadata Files
@@ -285,7 +394,7 @@ The indexing process creates incremental `.phototransfer-index-XXXX.json` files 
   "workingDirectory": "/path/to/photos", 
   "version": "1.0.0",
   "totalCount": 150,
-  "supportedExtensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".cr3", ".crw", ".cr2", ".avi", ".mp4", ".3gp", ".m4a", ".mov"],
+  "supportedExtensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".cr3", ".crw", ".cr2", ".avi", ".mp4", ".3gp", ".m4a", ".mov", ".jpg_128x96", ".mp4_128x96"],
   "photos": [
     {
       "filePath": "/path/to/photo.jpg",

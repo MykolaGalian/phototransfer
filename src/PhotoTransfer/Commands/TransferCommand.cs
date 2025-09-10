@@ -10,9 +10,12 @@ public static class TransferCommand
     public static Command Create()
     {
         // Create a command that accepts date patterns like --2012-01
-        var dateArgument = new Argument<string>(
+        var dateArgument = new Argument<string?>(
             "period",
-            "Date period in format YYYY-MM");
+            "Date period in format YYYY-MM (optional when using --all)")
+        {
+            Arity = ArgumentArity.ZeroOrOne
+        };
 
         var copyOption = new Option<bool>(
             "--copy",
@@ -33,19 +36,24 @@ public static class TransferCommand
             "--verbose",
             "Show detailed transfer information");
 
-        var command = new Command("--transfer", "Transfer photos from specified period")
+        var allOption = new Option<bool>(
+            "--all",
+            "Transfer all photos organized by their monthly periods");
+
+        var command = new Command("--transfer", "Transfer photos from specified period or all periods")
         {
             dateArgument,
             copyOption,
             dryRunOption,
             targetOption,
-            verboseOption
+            verboseOption,
+            allOption
         };
 
-        command.SetHandler(async (period, copy, dryRun, target, verbose) =>
+        command.SetHandler(async (period, copy, dryRun, target, verbose, all) =>
         {
-            await ExecuteTransferCommand(period, copy, dryRun, target, verbose);
-        }, dateArgument, copyOption, dryRunOption, targetOption, verboseOption);
+            await ExecuteTransferCommand(period, copy, dryRun, target, verbose, all);
+        }, dateArgument, copyOption, dryRunOption, targetOption, verboseOption, allOption);
 
         return command;
     }
@@ -60,19 +68,21 @@ public static class TransferCommand
         return commands;
     }
 
-    private static async Task ExecuteTransferCommand(string period, bool copy, bool dryRun, string? target, bool verbose)
+    private static async Task ExecuteTransferCommand(string? period, bool copy, bool dryRun, string? target, bool verbose, bool all)
     {
         try
         {
-            // Parse the date period
-            TimePeriod timePeriod;
-            try
+            // Validate arguments
+            if (!all && string.IsNullOrEmpty(period))
             {
-                timePeriod = TimePeriod.Parse(period);
+                Console.Error.WriteLine("Error: Either specify a period (YYYY-MM) or use --all flag");
+                Environment.Exit(2);
+                return;
             }
-            catch (FormatException)
+
+            if (all && !string.IsNullOrEmpty(period))
             {
-                Console.Error.WriteLine($"Error: Invalid date format: {period}. Expected format: YYYY-MM");
+                Console.Error.WriteLine("Error: Cannot specify both period and --all flag");
                 Environment.Exit(2);
                 return;
             }
@@ -96,86 +106,15 @@ public static class TransferCommand
 
             // Load metadata
             var index = metadataStore.LoadIndex(metadataFile);
-
-            // Find photos for the specified period
             var transferService = new PhotoTransferService(metadataStore);
-            var photosForPeriod = transferService.GetPhotosForPeriod(index, timePeriod);
 
-            if (photosForPeriod.Count == 0)
+            if (all)
             {
-                Console.Error.WriteLine($"Error: No photos found for period: {timePeriod}");
-                Environment.Exit(2);
-                return;
-            }
-
-            Console.WriteLine($"Found {photosForPeriod.Count} photos for period: {timePeriod}");
-
-            // Determine target directory
-            var targetDirectory = target ?? Path.Combine(Environment.CurrentDirectory, "phototransfer");
-            var periodTargetDirectory = Path.Combine(targetDirectory, timePeriod.ToString());
-
-            if (verbose)
-            {
-                Console.WriteLine($"Target directory: {periodTargetDirectory}");
-            }
-
-            // Plan transfer operations
-            var transferType = copy ? TransferType.Copy : TransferType.Move;
-            var operations = transferService.PlanTransfer(photosForPeriod, periodTargetDirectory, transferType);
-
-            if (dryRun)
-            {
-                Console.WriteLine("Dry run mode - showing what would be transferred:");
-                foreach (var operation in operations)
-                {
-                    var actionWord = operation.Type == TransferType.Copy ? "Copy" : "Move";
-                    Console.WriteLine($"Would {actionWord.ToLower()}: {operation.Photo.FilePath} -> {operation.TargetPath}");
-                }
-                Console.WriteLine($"Total: {operations.Count} files would be transferred");
-                Environment.Exit(0);
-                return;
-            }
-
-            // Execute transfer
-            Console.WriteLine($"Starting transfer of {operations.Count} files...");
-            
-            if (verbose)
-            {
-                foreach (var operation in operations)
-                {
-                    Console.WriteLine($"Transferring: {operation.Photo.FileName} -> {Path.GetFileName(operation.TargetPath)}");
-                }
-            }
-
-            transferService.ExecuteTransfer(operations, dryRun);
-
-            // Check for failures
-            var failed = operations.Where(op => op.Status == OperationStatus.Failed).ToList();
-            var succeeded = operations.Where(op => op.Status == OperationStatus.Completed).ToList();
-
-            if (failed.Any())
-            {
-                Console.Error.WriteLine($"Warning: {failed.Count} files failed to transfer:");
-                foreach (var failure in failed)
-                {
-                    Console.Error.WriteLine($"  {failure.Photo.FileName}: {failure.ErrorMessage}");
-                }
-            }
-
-            // Update metadata for successful transfers
-            if (succeeded.Any())
-            {
-                transferService.UpdateMetadataAfterTransfer(metadataFile, succeeded);
-            }
-
-            Console.WriteLine($"Transfer complete - {succeeded.Count} files transferred successfully");
-            if (failed.Any())
-            {
-                Environment.Exit(3); // Partial success
+                ExecuteTransferAllPeriods(index, transferService, copy, dryRun, target, verbose, metadataFile);
             }
             else
             {
-                Environment.Exit(0); // Full success
+                ExecuteTransferSinglePeriod(period!, index, transferService, copy, dryRun, target, verbose, metadataFile);
             }
         }
         catch (FileNotFoundException)
@@ -235,7 +174,176 @@ public static class TransferCommand
 
         // Remove leading dashes and execute transfer
         var period = dateArg.TrimStart('-');
-        await ExecuteTransferCommand(period, copy, dryRun, target, verbose);
+        await ExecuteTransferCommand(period, copy, dryRun, target, verbose, false);
         return 0;
+    }
+
+    private static void ExecuteTransferSinglePeriod(string period, PhotoIndex index, PhotoTransferService transferService, bool copy, bool dryRun, string? target, bool verbose, string metadataFile)
+    {
+        // Parse the date period
+        TimePeriod timePeriod;
+        try
+        {
+            timePeriod = TimePeriod.Parse(period);
+        }
+        catch (FormatException)
+        {
+            Console.Error.WriteLine($"Error: Invalid date format: {period}. Expected format: YYYY-MM");
+            Environment.Exit(2);
+            return;
+        }
+
+        // Find photos for the specified period
+        var photosForPeriod = transferService.GetPhotosForPeriod(index, timePeriod);
+
+        if (photosForPeriod.Count == 0)
+        {
+            Console.Error.WriteLine($"Error: No photos found for period: {timePeriod}");
+            Environment.Exit(2);
+            return;
+        }
+
+        Console.WriteLine($"Found {photosForPeriod.Count} photos for period: {timePeriod}");
+
+        // Determine target directory
+        var targetDirectory = target ?? Path.Combine(Environment.CurrentDirectory, "phototransfer");
+        var periodTargetDirectory = Path.Combine(targetDirectory, timePeriod.ToString());
+
+        if (verbose)
+        {
+            Console.WriteLine($"Target directory: {periodTargetDirectory}");
+        }
+
+        // Plan and execute transfer for this period
+        ExecuteTransferForPeriod(timePeriod, photosForPeriod, periodTargetDirectory, transferService, copy, dryRun, verbose, metadataFile);
+    }
+
+    private static void ExecuteTransferAllPeriods(PhotoIndex index, PhotoTransferService transferService, bool copy, bool dryRun, string? target, bool verbose, string metadataFile)
+    {
+        // Group photos by period and get unique periods
+        var periodGroups = index.Photos
+            .GroupBy(photo => new { Year = photo.EffectiveDate.Year, Month = photo.EffectiveDate.Month })
+            .Select(group => new 
+            {
+                Period = new TimePeriod(group.Key.Year, group.Key.Month),
+                Photos = group.ToList()
+            })
+            .OrderBy(group => group.Period.Year)
+            .ThenBy(group => group.Period.Month)
+            .ToList();
+
+        if (!periodGroups.Any())
+        {
+            Console.Error.WriteLine("Error: No photos found in index");
+            Environment.Exit(2);
+            return;
+        }
+
+        Console.WriteLine($"Found photos in {periodGroups.Count} periods:");
+        foreach (var group in periodGroups)
+        {
+            Console.WriteLine($"  {group.Period}: {group.Photos.Count} photos");
+        }
+        Console.WriteLine();
+
+        var targetDirectory = target ?? Path.Combine(Environment.CurrentDirectory, "phototransfer");
+
+        // Process each period
+        var totalSucceeded = 0;
+        var totalFailed = 0;
+
+        foreach (var group in periodGroups)
+        {
+            var periodTargetDirectory = Path.Combine(targetDirectory, group.Period.ToString());
+            
+            if (verbose)
+            {
+                Console.WriteLine($"Processing period: {group.Period}");
+                Console.WriteLine($"Target directory: {periodTargetDirectory}");
+            }
+
+            // Filter duplicates for this period (same logic as GetPhotosForPeriod but with deduplication)
+            var photosForPeriod = group.Photos
+                .GroupBy(photo => photo.FileName, StringComparer.OrdinalIgnoreCase)
+                .Select(fileGroup => fileGroup.OrderByDescending(photo => photo.FileSize).First())
+                .ToList();
+
+            var (succeeded, failed) = ExecuteTransferForPeriod(group.Period, photosForPeriod, periodTargetDirectory, transferService, copy, dryRun, verbose, metadataFile);
+            totalSucceeded += succeeded;
+            totalFailed += failed;
+
+            Console.WriteLine();
+        }
+
+        Console.WriteLine($"All periods transfer complete - {totalSucceeded} files transferred successfully");
+        if (totalFailed > 0)
+        {
+            Console.WriteLine($"Warning: {totalFailed} files failed to transfer");
+            Environment.Exit(3); // Partial success
+        }
+        else
+        {
+            Environment.Exit(0); // Full success
+        }
+    }
+
+    private static (int succeeded, int failed) ExecuteTransferForPeriod(TimePeriod period, List<PhotoMetadata> photos, string periodTargetDirectory, PhotoTransferService transferService, bool copy, bool dryRun, bool verbose, string metadataFile)
+    {
+        // Plan transfer operations
+        var transferType = copy ? TransferType.Copy : TransferType.Move;
+        var operations = transferService.PlanTransfer(photos, periodTargetDirectory, transferType);
+
+        if (operations.Count == 0)
+        {
+            Console.WriteLine($"No files to transfer for period {period}");
+            return (0, 0);
+        }
+
+        if (dryRun)
+        {
+            Console.WriteLine($"Dry run mode - would transfer {operations.Count} files for period {period}:");
+            foreach (var operation in operations)
+            {
+                var actionWord = operation.Type == TransferType.Copy ? "Copy" : "Move";
+                Console.WriteLine($"  Would {actionWord.ToLower()}: {operation.Photo.FilePath} -> {operation.TargetPath}");
+            }
+            return (operations.Count, 0);
+        }
+
+        // Execute transfer
+        Console.WriteLine($"Transferring {operations.Count} files for period {period}...");
+        
+        if (verbose)
+        {
+            foreach (var operation in operations)
+            {
+                Console.WriteLine($"  Transferring: {operation.Photo.FileName} -> {Path.GetFileName(operation.TargetPath)}");
+            }
+        }
+
+        transferService.ExecuteTransfer(operations, dryRun);
+
+        // Check for failures
+        var failed = operations.Where(op => op.Status == OperationStatus.Failed).ToList();
+        var succeeded = operations.Where(op => op.Status == OperationStatus.Completed).ToList();
+
+        if (failed.Any())
+        {
+            Console.Error.WriteLine($"Warning: {failed.Count} files failed to transfer for period {period}:");
+            foreach (var failure in failed)
+            {
+                Console.Error.WriteLine($"  {failure.Photo.FileName}: {failure.ErrorMessage}");
+            }
+        }
+
+        // Update metadata for successful transfers
+        if (succeeded.Any())
+        {
+            transferService.UpdateMetadataAfterTransfer(metadataFile, succeeded);
+        }
+
+        Console.WriteLine($"Period {period} transfer complete - {succeeded.Count} files transferred successfully");
+        
+        return (succeeded.Count, failed.Count);
     }
 }
