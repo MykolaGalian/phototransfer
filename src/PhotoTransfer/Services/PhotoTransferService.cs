@@ -44,8 +44,7 @@ public class PhotoTransferService
             }
             else
             {
-                // Check if file exists in target directory and compare sizes
-                var targetPath = Path.Combine(targetDirectory, photo.FileName);
+                var targetPath = GenerateTargetPath(targetDirectory, photo, operations);
                 
                 if (File.Exists(targetPath))
                 {
@@ -143,6 +142,17 @@ public class PhotoTransferService
 
     private string GenerateTargetPath(string targetDirectory, PhotoMetadata photo, List<TransferOperation> existingOperations)
     {
-        return Path.Combine(targetDirectory, photo.FileName);
+        // If camera model is available, create subdirectory for camera model
+        if (!string.IsNullOrEmpty(photo.CameraModel))
+        {
+            var cameraModelDirectory = Path.Combine(targetDirectory, photo.CameraModel);
+            return Path.Combine(cameraModelDirectory, photo.FileName);
+        }
+        else
+        {
+            // If no camera model, use "Unknown" subdirectory
+            var unknownDirectory = Path.Combine(targetDirectory, "Unknown");
+            return Path.Combine(unknownDirectory, photo.FileName);
+        }
     }
 }

@@ -301,6 +301,7 @@ public class PhotoIndexer
         var fileInfo = new FileInfo(filePath);
         var hash = CalculateFileHash(filePath);
         var (creationDate, modificationDate, effectiveDate, allDates) = ExtractDates(filePath, fileInfo);
+        var cameraModel = ExtractCameraModel(filePath);
 
         return new PhotoMetadata
         {
@@ -312,6 +313,7 @@ public class PhotoIndexer
             CreationDate = creationDate,
             ModificationDate = modificationDate,
             EffectiveDate = effectiveDate,
+            CameraModel = cameraModel,
             AllDates = allDates,
             IsTransferred = false,
             TransferredTo = null
@@ -509,6 +511,158 @@ public class PhotoIndexer
         }
         
         return dates;
+    }
+
+    private string ExtractCameraModel(string filePath)
+    {
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        
+        try
+        {
+            // For image files, extract camera model from EXIF
+            if (IsImageFile(extension))
+            {
+                return ExtractCameraModelFromExif(filePath);
+            }
+            // For video files, extract camera model from video metadata
+            else if (IsVideoFile(extension))
+            {
+                return ExtractCameraModelFromVideo(filePath);
+            }
+        }
+        catch
+        {
+            // If extraction fails, return empty string
+        }
+        
+        return string.Empty;
+    }
+
+    private string ExtractCameraModelFromExif(string filePath)
+    {
+        try
+        {
+            var directories = MetadataExtractor.ImageMetadataReader.ReadMetadata(filePath);
+            
+            foreach (var directory in directories)
+            {
+                // Try to get camera make and model from EXIF
+                string? make = null;
+                string? model = null;
+                
+                if (directory.HasTagName(ExifDirectoryBase.TagMake))
+                    make = directory.GetDescription(ExifDirectoryBase.TagMake)?.Trim();
+                    
+                if (directory.HasTagName(ExifDirectoryBase.TagModel))
+                    model = directory.GetDescription(ExifDirectoryBase.TagModel)?.Trim();
+                
+                // Combine make and model, or use model alone if make is not available
+                if (!string.IsNullOrEmpty(make) && !string.IsNullOrEmpty(model))
+                {
+                    // Avoid duplication if model already contains make
+                    if (model.StartsWith(make, StringComparison.OrdinalIgnoreCase))
+                        return SanitizeCameraModel(model);
+                    else
+                        return SanitizeCameraModel($"{make} {model}");
+                }
+                else if (!string.IsNullOrEmpty(model))
+                {
+                    return SanitizeCameraModel(model);
+                }
+                else if (!string.IsNullOrEmpty(make))
+                {
+                    return SanitizeCameraModel(make);
+                }
+            }
+        }
+        catch
+        {
+            // If EXIF extraction fails, return empty string
+        }
+        
+        return string.Empty;
+    }
+
+    private string ExtractCameraModelFromVideo(string filePath)
+    {
+        try
+        {
+            var directories = MetadataExtractor.ImageMetadataReader.ReadMetadata(filePath);
+            
+            foreach (var directory in directories)
+            {
+                // Try to extract make and model from any available metadata
+                string? make = null;
+                string? model = null;
+                
+                // Try common tags that might contain camera information
+                var tags = directory.Tags;
+                foreach (var tag in tags)
+                {
+                    var description = tag.Description?.Trim();
+                    var name = tag.Name?.ToLowerInvariant();
+                    
+                    if (name != null && !string.IsNullOrEmpty(description))
+                    {
+                        if (name.Contains("make") || name.Contains("manufacturer"))
+                        {
+                            make = description;
+                        }
+                        else if (name.Contains("model") || name.Contains("camera"))
+                        {
+                            model = description;
+                        }
+                    }
+                }
+                
+                // Combine make and model if found
+                if (!string.IsNullOrEmpty(make) && !string.IsNullOrEmpty(model))
+                {
+                    if (model.StartsWith(make, StringComparison.OrdinalIgnoreCase))
+                        return SanitizeCameraModel(model);
+                    else
+                        return SanitizeCameraModel($"{make} {model}");
+                }
+                else if (!string.IsNullOrEmpty(model))
+                {
+                    return SanitizeCameraModel(model);
+                }
+                else if (!string.IsNullOrEmpty(make))
+                {
+                    return SanitizeCameraModel(make);
+                }
+            }
+        }
+        catch
+        {
+            // If video metadata extraction fails, return empty string
+        }
+        
+        return string.Empty;
+    }
+
+    private string SanitizeCameraModel(string cameraModel)
+    {
+        if (string.IsNullOrWhiteSpace(cameraModel))
+            return string.Empty;
+            
+        // Remove invalid characters for file system paths
+        var sanitized = cameraModel.Trim();
+        var invalidChars = Path.GetInvalidFileNameChars().Concat(Path.GetInvalidPathChars()).ToArray();
+        
+        foreach (var invalidChar in invalidChars)
+        {
+            sanitized = sanitized.Replace(invalidChar, '_');
+        }
+        
+        // Replace multiple spaces with single space
+        sanitized = System.Text.RegularExpressions.Regex.Replace(sanitized, @"\s+", " ");
+        
+        // Limit length to avoid very long folder names
+        if (sanitized.Length > 50)
+            sanitized = sanitized.Substring(0, 50).TrimEnd();
+            
+        return sanitized;
     }
 
     private List<DateSource> ExtractVideoDates(string filePath)
