@@ -303,6 +303,9 @@ public class PhotoIndexer
         var (creationDate, modificationDate, effectiveDate, allDates) = ExtractDates(filePath, fileInfo);
         var cameraModel = ExtractCameraModel(filePath);
 
+        // Extract the parent directory name
+        var sourceDirectory = fileInfo.Directory?.Name ?? string.Empty;
+
         return new PhotoMetadata
         {
             FilePath = filePath,
@@ -314,6 +317,7 @@ public class PhotoIndexer
             ModificationDate = modificationDate,
             EffectiveDate = effectiveDate,
             CameraModel = cameraModel,
+            SourceDirectory = sourceDirectory,
             AllDates = allDates,
             IsTransferred = false,
             TransferredTo = null

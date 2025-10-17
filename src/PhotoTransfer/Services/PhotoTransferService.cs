@@ -26,39 +26,64 @@ public class PhotoTransferService
     {
         var operations = new List<TransferOperation>();
 
-        foreach (var photo in photos)
-        {
-            var existingOperation = FindDuplicateByName(operations, photo.FileName);
-            
-            if (existingOperation != null)
-            {
-                // If current photo is larger, replace the existing operation
-                if (photo.FileSize > existingOperation.Photo.FileSize)
+        // First, group photos by camera model and collect unique source directories for each camera
+        var cameraGroups = photos
+            .GroupBy(photo => string.IsNullOrEmpty(photo.CameraModel) ? "Unknown" : photo.CameraModel)
+            .ToDictionary(
+                group => group.Key,
+                group => new
                 {
-                    operations.Remove(existingOperation);
-                    var targetPath = GenerateTargetPath(targetDirectory, photo, operations);
+                    Photos = group.ToList(),
+                    SourceDirectories = group
+                        .Where(p => !string.IsNullOrEmpty(p.SourceDirectory))
+                        .Select(p => p.SourceDirectory)
+                        .Distinct()
+                        .OrderBy(d => d)
+                        .ToList()
+                }
+            );
+
+        // Process each camera group
+        foreach (var cameraGroup in cameraGroups)
+        {
+            var cameraModel = cameraGroup.Key;
+            var groupPhotos = cameraGroup.Value.Photos;
+            var sourceDirectories = cameraGroup.Value.SourceDirectories;
+
+            foreach (var photo in groupPhotos)
+            {
+                var existingOperation = FindDuplicateByName(operations, photo.FileName);
+
+                if (existingOperation != null)
+                {
+                    // If current photo is larger, replace the existing operation
+                    if (photo.FileSize > existingOperation.Photo.FileSize)
+                    {
+                        operations.Remove(existingOperation);
+                        var targetPath = GenerateTargetPath(targetDirectory, photo, sourceDirectories);
+                        var operation = new TransferOperation(photo, targetPath, transferType);
+                        operations.Add(operation);
+                    }
+                    // Otherwise, skip this photo (keep the larger one)
+                }
+                else
+                {
+                    var targetPath = GenerateTargetPath(targetDirectory, photo, sourceDirectories);
+
+                    if (File.Exists(targetPath))
+                    {
+                        var existingFileInfo = new FileInfo(targetPath);
+                        if (photo.FileSize <= existingFileInfo.Length)
+                        {
+                            // Skip this photo as existing file is equal or larger
+                            continue;
+                        }
+                        // Current photo is larger, so we'll overwrite
+                    }
+
                     var operation = new TransferOperation(photo, targetPath, transferType);
                     operations.Add(operation);
                 }
-                // Otherwise, skip this photo (keep the larger one)
-            }
-            else
-            {
-                var targetPath = GenerateTargetPath(targetDirectory, photo, operations);
-                
-                if (File.Exists(targetPath))
-                {
-                    var existingFileInfo = new FileInfo(targetPath);
-                    if (photo.FileSize <= existingFileInfo.Length)
-                    {
-                        // Skip this photo as existing file is equal or larger
-                        continue;
-                    }
-                    // Current photo is larger, so we'll overwrite
-                }
-                
-                var operation = new TransferOperation(photo, targetPath, transferType);
-                operations.Add(operation);
             }
         }
 
@@ -140,19 +165,26 @@ public class PhotoTransferService
             Path.GetFileName(op.TargetPath).Equals(fileName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private string GenerateTargetPath(string targetDirectory, PhotoMetadata photo, List<TransferOperation> existingOperations)
+    private string GenerateTargetPath(string targetDirectory, PhotoMetadata photo, List<string> sourceDirectories)
     {
-        // If camera model is available, create subdirectory for camera model
-        if (!string.IsNullOrEmpty(photo.CameraModel))
+        // Determine camera model directory name
+        var cameraModel = string.IsNullOrEmpty(photo.CameraModel) ? "Unknown" : photo.CameraModel;
+
+        // Build directory name: camera model + all unique source directories from which files came
+        string directoryName;
+        if (sourceDirectories != null && sourceDirectories.Any())
         {
-            var cameraModelDirectory = Path.Combine(targetDirectory, photo.CameraModel);
-            return Path.Combine(cameraModelDirectory, photo.FileName);
+            // Append all source directory names to camera model name with underscore separator
+            var sourceDirectoriesSuffix = string.Join("_", sourceDirectories);
+            directoryName = $"{cameraModel}_{sourceDirectoriesSuffix}";
         }
         else
         {
-            // If no camera model, use "Unknown" subdirectory
-            var unknownDirectory = Path.Combine(targetDirectory, "Unknown");
-            return Path.Combine(unknownDirectory, photo.FileName);
+            // No source directories, use just camera model
+            directoryName = cameraModel;
         }
+
+        var cameraModelDirectory = Path.Combine(targetDirectory, directoryName);
+        return Path.Combine(cameraModelDirectory, photo.FileName);
     }
 }

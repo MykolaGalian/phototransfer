@@ -17,9 +17,11 @@ A .NET 9 console application for intelligent media organization by creation date
 - **File Type Analysis**: Detailed breakdown of formats in your collection
 
 ### 🗂️ **Intelligent Organization**
-- **Photo Indexing**: Recursively scan directories for supported image/video/audio formats  
+- **Photo Indexing**: Recursively scan directories for supported image/video/audio formats
 - **Incremental Indexing**: Progressive processing with 5000-record saves and resume capability
 - **Date-based Organization**: Transfer media by year-month periods (YYYY-MM)
+- **Camera-based Grouping**: Automatically organize files by camera model within each period
+- **Source Directory Tracking**: Track and append source folder names to camera directories
 - **Smart Duplicate Handling**: Select largest file when duplicates exist by filename within each time period
 - **Operation Modes**: Move (default) or copy files with dry-run support
 
@@ -357,30 +359,66 @@ phototransfer --transfer --all --target ~/Photos --copy
 
 ## File Organization
 
-PhotoTransfer creates the following structure:
+PhotoTransfer creates an organized structure with automatic grouping by camera model and source directories.
+
+### Camera Model Organization
+
+Files are automatically organized by camera model within each time period. If files from the same camera come from multiple source directories, those directory names are appended to the camera folder name with underscore separators.
 
 #### Single Period Transfer
 ```
 target-directory/
-└── YYYY-MM/
-    ├── photo1.jpg
-    ├── photo2.png
-    └── largest-photo.jpg  # Only largest duplicate transferred per period
+└── 2023-06/
+    ├── Canon EOS 5D_Summer_Trip_Vacation/
+    │   ├── IMG001.jpg
+    │   ├── IMG002.jpg
+    │   └── IMG003.jpg
+    ├── Nikon D850_Holiday/
+    │   ├── DSC001.jpg
+    │   └── DSC002.jpg
+    └── Unknown/                          # Files without camera metadata
+        └── phone-photo.jpg
 ```
 
 #### All Periods Transfer (--all flag)
 ```
 target-directory/
 ├── 2023-01/
-│   ├── photo1.jpg
-│   └── photo2.png
+│   ├── Canon EOS 5D_Winter/
+│   │   ├── photo1.jpg
+│   │   └── photo2.jpg
+│   └── iPhone 12_Work/
+│       └── photo3.jpg
 ├── 2023-02/
-│   ├── video1.mp4
-│   └── photo3.jpg
+│   ├── Canon EOS 5D_Vacation/
+│   │   ├── video1.mp4
+│   │   └── photo4.jpg
+│   └── Nikon D850_Beach_Mountains/      # Files from multiple source folders
+│       ├── photo5.jpg
+│       └── photo6.jpg
 └── 2023-03/
-    ├── photo4.jpg
-    └── largest-duplicate.jpg  # Only largest duplicate per period
+    └── Unknown/                          # Mixed devices without metadata
+        ├── photo7.jpg
+        └── largest-duplicate.jpg         # Only largest duplicate per period
 ```
+
+### Organization Rules
+
+1. **Camera Model Directories**: Each camera model gets its own subdirectory within the period folder
+2. **Source Directory Tracking**: All unique source folder names are collected and appended to the camera name
+3. **Alphabetical Sorting**: Source directory names are sorted alphabetically before being added
+4. **Unknown Category**: Files without camera metadata are placed in an "Unknown" subdirectory
+5. **Duplicate Handling**: Only the largest file is kept when duplicates exist within the same period
+
+**Example**: If you have Canon EOS 5D photos in folders "Vacation", "Summer", and "Trip", they will all be organized into:
+```
+2023-06/Canon EOS 5D_Summer_Trip_Vacation/
+```
+
+This makes it easy to see:
+- Which camera was used
+- Which source folders contributed files to this collection
+- All files from the same camera in one organized location
 
 ## Metadata Files
 
@@ -397,11 +435,13 @@ The indexing process creates incremental `.phototransfer-index-XXXX.json` files 
   "supportedExtensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".cr3", ".crw", ".cr2", ".avi", ".mp4", ".3gp", ".m4a", ".mov", ".jpg_128x96", ".mp4_128x96"],
   "photos": [
     {
-      "filePath": "/path/to/photo.jpg",
-      "fileName": "photo.jpg", 
+      "filePath": "/path/to/Vacation/photo.jpg",
+      "fileName": "photo.jpg",
       "extension": ".jpg",
       "fileSize": 2048576,
       "hash": "sha256hash",
+      "cameraModel": "Canon EOS 5D",
+      "sourceDirectory": "Vacation",
       "creationDate": "2023-06-15T14:30:00Z",
       "modificationDate": "2023-06-15T14:25:00Z",
       "effectiveDate": "2023-06-15T14:25:00Z",

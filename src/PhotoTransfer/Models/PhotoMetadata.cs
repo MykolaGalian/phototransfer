@@ -11,6 +11,7 @@ public class PhotoMetadata
     public DateTime ModificationDate { get; set; }
     public DateTime EffectiveDate { get; set; }
     public string CameraModel { get; set; } = string.Empty;
+    public string SourceDirectory { get; set; } = string.Empty;
     
     // All collected metadata dates for analysis and debugging
     public List<DateSource> AllDates { get; set; } = new List<DateSource>();
