@@ -21,7 +21,7 @@ A .NET 9 console application for intelligent media organization by creation date
 - **Incremental Indexing**: Progressive processing with 5000-record saves and resume capability
 - **Date-based Organization**: Transfer media by year-month periods (YYYY-MM)
 - **Camera-based Grouping**: Automatically organize files by camera model within each period
-- **Source Directory Tracking**: Track and append source folder names to camera directories
+- **Source Directory Preservation**: Maintain original folder structure as subdirectories within camera directories
 - **Smart Duplicate Handling**: Select largest file when duplicates exist by filename within each time period
 - **Operation Modes**: Move (default) or copy files with dry-run support
 
@@ -363,19 +363,24 @@ PhotoTransfer creates an organized structure with automatic grouping by camera m
 
 ### Camera Model Organization
 
-Files are automatically organized by camera model within each time period. If files from the same camera come from multiple source directories, those directory names are appended to the camera folder name with underscore separators.
+Files are automatically organized by camera model within each time period. Each camera gets its own directory, and within that directory, subdirectories are created for each source folder.
 
 #### Single Period Transfer
 ```
 target-directory/
 └── 2023-06/
-    ├── Canon EOS 5D_Summer_Trip_Vacation/
-    │   ├── IMG001.jpg
-    │   ├── IMG002.jpg
-    │   └── IMG003.jpg
-    ├── Nikon D850_Holiday/
-    │   ├── DSC001.jpg
-    │   └── DSC002.jpg
+    ├── Canon EOS 5D/
+    │   ├── Summer/
+    │   │   ├── IMG001.jpg
+    │   │   └── IMG002.jpg
+    │   ├── Trip/
+    │   │   └── IMG003.jpg
+    │   └── Vacation/
+    │       └── IMG004.jpg
+    ├── Nikon D850/
+    │   └── Holiday/
+    │       ├── DSC001.jpg
+    │       └── DSC002.jpg
     └── Unknown/                          # Files without camera metadata
         └── phone-photo.jpg
 ```
@@ -384,18 +389,23 @@ target-directory/
 ```
 target-directory/
 ├── 2023-01/
-│   ├── Canon EOS 5D_Winter/
-│   │   ├── photo1.jpg
-│   │   └── photo2.jpg
-│   └── iPhone 12_Work/
-│       └── photo3.jpg
+│   ├── Canon EOS 5D/
+│   │   └── Winter/
+│   │       ├── photo1.jpg
+│   │       └── photo2.jpg
+│   └── iPhone 12/
+│       └── Work/
+│           └── photo3.jpg
 ├── 2023-02/
-│   ├── Canon EOS 5D_Vacation/
-│   │   ├── video1.mp4
-│   │   └── photo4.jpg
-│   └── Nikon D850_Beach_Mountains/      # Files from multiple source folders
-│       ├── photo5.jpg
-│       └── photo6.jpg
+│   ├── Canon EOS 5D/
+│   │   └── Vacation/
+│   │       ├── video1.mp4
+│   │       └── photo4.jpg
+│   └── Nikon D850/
+│       ├── Beach/
+│       │   └── photo5.jpg
+│       └── Mountains/
+│           └── photo6.jpg
 └── 2023-03/
     └── Unknown/                          # Mixed devices without metadata
         ├── photo7.jpg
@@ -405,20 +415,27 @@ target-directory/
 ### Organization Rules
 
 1. **Camera Model Directories**: Each camera model gets its own subdirectory within the period folder
-2. **Source Directory Tracking**: All unique source folder names are collected and appended to the camera name
-3. **Alphabetical Sorting**: Source directory names are sorted alphabetically before being added
+2. **Source Directory Subdirectories**: Within each camera directory, subdirectories are created for each source folder
+3. **Preserved Source Structure**: Files maintain their original source folder organization
 4. **Unknown Category**: Files without camera metadata are placed in an "Unknown" subdirectory
 5. **Duplicate Handling**: Only the largest file is kept when duplicates exist within the same period
 
-**Example**: If you have Canon EOS 5D photos in folders "Vacation", "Summer", and "Trip", they will all be organized into:
+**Example**: If you have Canon EOS 5D photos in folders "Vacation", "Summer", and "Trip", they will be organized into:
 ```
-2023-06/Canon EOS 5D_Summer_Trip_Vacation/
+2023-06/
+└── Canon EOS 5D/
+    ├── Summer/
+    │   └── photos...
+    ├── Trip/
+    │   └── photos...
+    └── Vacation/
+        └── photos...
 ```
 
 This makes it easy to see:
 - Which camera was used
-- Which source folders contributed files to this collection
-- All files from the same camera in one organized location
+- Which source folders the files came from
+- Files organized by both camera and original location
 
 ## Metadata Files
 

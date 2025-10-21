@@ -61,14 +61,14 @@ public class PhotoTransferTests
         transferService.ExecuteTransfer(operations);
 
         // Assert: Should move matching photos to target directory
-        var expectedTargetDir = Path.Combine(targetBaseDir, "2023-06");
+        var expectedTargetDir = Path.Combine(targetBaseDir, "2023-06", "Unknown");
         Assert.That(Directory.Exists(expectedTargetDir), Is.True, "Target directory should be created");
 
         var transferredFiles = Directory.GetFiles(expectedTargetDir);
         Assert.That(transferredFiles.Length, Is.EqualTo(2), "Should transfer exactly 2 photos from June 2023");
 
         // Verify files are moved (not copied)
-        Assert.That(File.Exists(Path.Combine(sourceDir, "june1.jpg")), Is.False, 
+        Assert.That(File.Exists(Path.Combine(sourceDir, "june1.jpg")), Is.False,
             "Original files should be moved (deleted from source)");
         Assert.That(File.Exists(Path.Combine(sourceDir, "june2.png")), Is.False,
             "Original files should be moved (deleted from source)");
@@ -104,14 +104,14 @@ public class PhotoTransferTests
         transferService.ExecuteTransfer(operations);
 
         // Assert: Should choose only the largest file, not create suffixed duplicates
-        var expectedTargetDir = Path.Combine(targetBaseDir, "2023-08");
-        
+        var expectedTargetDir = Path.Combine(targetBaseDir, "2023-08", "Unknown");
+
         // Check if operations were created and executed
         Assert.That(operations.Count, Is.EqualTo(1), "Should plan transfer for only the largest file");
-        
+
         // Verify directory exists (should be created during ExecuteTransfer)
         Assert.That(Directory.Exists(expectedTargetDir), Is.True, "Target directory should be created");
-        
+
         var files = Directory.GetFiles(expectedTargetDir).Select(Path.GetFileName).ToList();
 
         Assert.That(files.Count, Is.EqualTo(1), "Should transfer only the largest file");
@@ -143,7 +143,7 @@ public class PhotoTransferTests
         transferService.ExecuteTransfer(operations);
 
         // Assert: Should copy files, preserving originals
-        var expectedTargetDir2 = Path.Combine(targetBaseDir, "2023-06");
+        var expectedTargetDir2 = Path.Combine(targetBaseDir, "2023-06", "Unknown");
         Assert.That(Directory.Exists(expectedTargetDir2), Is.True, "Target directory should be created");
 
         // Original files should still exist
@@ -153,9 +153,9 @@ public class PhotoTransferTests
             "Original files should be preserved in copy mode");
 
         // Copied files should also exist
-        Assert.That(File.Exists(Path.Combine(targetDir, "june1.jpg")), Is.True,
+        Assert.That(File.Exists(Path.Combine(expectedTargetDir2, "june1.jpg")), Is.True,
             "Files should be copied to target directory");
-        Assert.That(File.Exists(Path.Combine(targetDir, "june2.png")), Is.True,
+        Assert.That(File.Exists(Path.Combine(expectedTargetDir2, "june2.png")), Is.True,
             "Files should be copied to target directory");
     }
 
@@ -354,6 +354,8 @@ public class PhotoTransferTests
                     FileSize = 1000L,
                     Extension = ".jpg",
                     Hash = "hash1",
+                    CameraModel = "",
+                    SourceDirectory = "",
                     IsTransferred = false,
                     TransferredTo = (string?)null
                 },
@@ -367,6 +369,8 @@ public class PhotoTransferTests
                     FileSize = 2000L,
                     Extension = ".jpg",
                     Hash = "hash2",
+                    CameraModel = "",
+                    SourceDirectory = "",
                     IsTransferred = false,
                     TransferredTo = (string?)null
                 },
@@ -380,6 +384,8 @@ public class PhotoTransferTests
                     FileSize = 3000L,
                     Extension = ".jpg",
                     Hash = "hash3",
+                    CameraModel = "",
+                    SourceDirectory = "",
                     IsTransferred = false,
                     TransferredTo = (string?)null
                 }
@@ -407,9 +413,13 @@ public class PhotoTransferTests
                     filePath = Path.Combine(sourceDir, "june1.jpg"),
                     fileName = "june1.jpg",
                     creationDate = new DateTime(2023, 6, 1),
+                    modificationDate = new DateTime(2023, 6, 1),
+                    effectiveDate = new DateTime(2023, 6, 1),
                     fileSize = 1024L,
                     extension = ".jpg",
                     hash = "hash1",
+                    cameraModel = "",
+                    sourceDirectory = "",
                     isTransferred = false,
                     transferredTo = (string?)null
                 },
@@ -418,9 +428,13 @@ public class PhotoTransferTests
                     filePath = Path.Combine(sourceDir, "june2.png"),
                     fileName = "june2.png",
                     creationDate = new DateTime(2023, 6, 15),
+                    modificationDate = new DateTime(2023, 6, 15),
+                    effectiveDate = new DateTime(2023, 6, 15),
                     fileSize = 2048L,
                     extension = ".png",
                     hash = "hash2",
+                    cameraModel = "",
+                    sourceDirectory = "",
                     isTransferred = false,
                     transferredTo = (string?)null
                 },
@@ -429,9 +443,13 @@ public class PhotoTransferTests
                     filePath = Path.Combine(sourceDir, "may1.jpg"),
                     fileName = "may1.jpg",
                     creationDate = new DateTime(2023, 5, 10),
+                    modificationDate = new DateTime(2023, 5, 10),
+                    effectiveDate = new DateTime(2023, 5, 10),
                     fileSize = 1500L,
                     extension = ".jpg",
                     hash = "hash3",
+                    cameraModel = "",
+                    sourceDirectory = "",
                     isTransferred = false,
                     transferredTo = (string?)null
                 }

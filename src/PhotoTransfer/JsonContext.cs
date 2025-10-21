@@ -3,6 +3,7 @@ using PhotoTransfer.Models;
 
 namespace PhotoTransfer;
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(PhotoIndex))]
 [JsonSerializable(typeof(PhotoMetadata))]
 [JsonSerializable(typeof(PhotoMetadata[]))]

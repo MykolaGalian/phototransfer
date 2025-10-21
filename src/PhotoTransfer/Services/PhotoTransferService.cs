@@ -26,29 +26,19 @@ public class PhotoTransferService
     {
         var operations = new List<TransferOperation>();
 
-        // First, group photos by camera model and collect unique source directories for each camera
+        // Group photos by camera model
         var cameraGroups = photos
             .GroupBy(photo => string.IsNullOrEmpty(photo.CameraModel) ? "Unknown" : photo.CameraModel)
             .ToDictionary(
                 group => group.Key,
-                group => new
-                {
-                    Photos = group.ToList(),
-                    SourceDirectories = group
-                        .Where(p => !string.IsNullOrEmpty(p.SourceDirectory))
-                        .Select(p => p.SourceDirectory)
-                        .Distinct()
-                        .OrderBy(d => d)
-                        .ToList()
-                }
+                group => group.ToList()
             );
 
         // Process each camera group
         foreach (var cameraGroup in cameraGroups)
         {
             var cameraModel = cameraGroup.Key;
-            var groupPhotos = cameraGroup.Value.Photos;
-            var sourceDirectories = cameraGroup.Value.SourceDirectories;
+            var groupPhotos = cameraGroup.Value;
 
             foreach (var photo in groupPhotos)
             {
@@ -60,7 +50,7 @@ public class PhotoTransferService
                     if (photo.FileSize > existingOperation.Photo.FileSize)
                     {
                         operations.Remove(existingOperation);
-                        var targetPath = GenerateTargetPath(targetDirectory, photo, sourceDirectories);
+                        var targetPath = GenerateTargetPath(targetDirectory, photo);
                         var operation = new TransferOperation(photo, targetPath, transferType);
                         operations.Add(operation);
                     }
@@ -68,7 +58,7 @@ public class PhotoTransferService
                 }
                 else
                 {
-                    var targetPath = GenerateTargetPath(targetDirectory, photo, sourceDirectories);
+                    var targetPath = GenerateTargetPath(targetDirectory, photo);
 
                     if (File.Exists(targetPath))
                     {
@@ -165,26 +155,22 @@ public class PhotoTransferService
             Path.GetFileName(op.TargetPath).Equals(fileName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private string GenerateTargetPath(string targetDirectory, PhotoMetadata photo, List<string> sourceDirectories)
+    private string GenerateTargetPath(string targetDirectory, PhotoMetadata photo)
     {
         // Determine camera model directory name
         var cameraModel = string.IsNullOrEmpty(photo.CameraModel) ? "Unknown" : photo.CameraModel;
 
-        // Build directory name: camera model + all unique source directories from which files came
-        string directoryName;
-        if (sourceDirectories != null && sourceDirectories.Any())
+        // Create base camera model directory
+        var cameraModelDirectory = Path.Combine(targetDirectory, cameraModel);
+
+        // If photo has source directory, create subdirectory inside camera model directory
+        if (!string.IsNullOrEmpty(photo.SourceDirectory))
         {
-            // Append all source directory names to camera model name with underscore separator
-            var sourceDirectoriesSuffix = string.Join("_", sourceDirectories);
-            directoryName = $"{cameraModel}_{sourceDirectoriesSuffix}";
-        }
-        else
-        {
-            // No source directories, use just camera model
-            directoryName = cameraModel;
+            var sourceSubdirectory = Path.Combine(cameraModelDirectory, photo.SourceDirectory);
+            return Path.Combine(sourceSubdirectory, photo.FileName);
         }
 
-        var cameraModelDirectory = Path.Combine(targetDirectory, directoryName);
+        // No source directory, place file directly in camera model directory
         return Path.Combine(cameraModelDirectory, photo.FileName);
     }
 }

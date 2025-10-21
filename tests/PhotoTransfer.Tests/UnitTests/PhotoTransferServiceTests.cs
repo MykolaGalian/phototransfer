@@ -72,8 +72,8 @@ public class PhotoTransferServiceTests
 
         // Assert
         Assert.That(operations.Count, Is.EqualTo(2));
-        Assert.That(operations[0].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "photo1.jpg")));
-        Assert.That(operations[1].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "photo2.jpg")));
+        Assert.That(operations[0].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "Unknown", "photo1.jpg")));
+        Assert.That(operations[1].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "Unknown", "photo2.jpg")));
         Assert.That(operations.All(op => op.Type == TransferType.Move), Is.True);
     }
 
@@ -94,7 +94,7 @@ public class PhotoTransferServiceTests
         Assert.That(operations.Count, Is.EqualTo(1));
         Assert.That(operations[0].Photo.Hash, Is.EqualTo("hash2")); // Larger file should be chosen
         Assert.That(operations[0].Photo.FileSize, Is.EqualTo(2048));
-        Assert.That(operations[0].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "photo.jpg")));
+        Assert.That(operations[0].TargetPath, Is.EqualTo(Path.Combine(_testDirectory, "Unknown", "photo.jpg")));
     }
 
     [Test]
@@ -138,9 +138,11 @@ public class PhotoTransferServiceTests
     public void PlanTransfer_ExistingFileInTarget_LargerNewFile_ShouldOverwrite()
     {
         // Arrange
-        var existingFilePath = Path.Combine(_testDirectory, "photo.jpg");
+        var unknownDir = Path.Combine(_testDirectory, "Unknown");
+        Directory.CreateDirectory(unknownDir);
+        var existingFilePath = Path.Combine(unknownDir, "photo.jpg");
         File.WriteAllText(existingFilePath, "small content"); // Create smaller existing file
-        
+
         var photos = new List<PhotoMetadata>
         {
             CreateTestPhoto("photo.jpg", "hash1", fileSize: 2048) // Larger new file
@@ -159,9 +161,11 @@ public class PhotoTransferServiceTests
     public void PlanTransfer_ExistingFileInTarget_SmallerNewFile_ShouldSkip()
     {
         // Arrange
-        var existingFilePath = Path.Combine(_testDirectory, "photo.jpg");
+        var unknownDir = Path.Combine(_testDirectory, "Unknown");
+        Directory.CreateDirectory(unknownDir);
+        var existingFilePath = Path.Combine(unknownDir, "photo.jpg");
         File.WriteAllText(existingFilePath, "much larger content that exceeds the new file size"); // Create larger existing file
-        
+
         var photos = new List<PhotoMetadata>
         {
             CreateTestPhoto("photo.jpg", "hash1", fileSize: 10) // Smaller new file
