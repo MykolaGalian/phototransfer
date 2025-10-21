@@ -11,9 +11,9 @@ public static class IndexCommand
     {
         var directoryOption = new Option<string?>(
             "--directory",
-            "Directory to index (defaults to current directory)")
+            "Directory or directories to index separated by comma (defaults to current directory)")
         {
-            ArgumentHelpName = "path"
+            ArgumentHelpName = "path1,path2,..."
         };
 
         var verboseOption = new Option<bool>(
@@ -56,15 +56,21 @@ public static class IndexCommand
     {
         try
         {
-            // Default to current directory if not specified
-            var targetDirectory = directory ?? Environment.CurrentDirectory;
-            
-            // Validate directory exists
-            if (!Directory.Exists(targetDirectory))
+            // Parse multiple directories separated by comma
+            var directoryInput = directory ?? Environment.CurrentDirectory;
+            var targetDirectories = directoryInput
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            // Validate all directories exist
+            foreach (var dir in targetDirectories)
             {
-                Console.Error.WriteLine($"Error: Directory not found: {targetDirectory}");
-                Environment.Exit(1);
-                return;
+                if (!Directory.Exists(dir))
+                {
+                    Console.Error.WriteLine($"Error: Directory not found: {dir}");
+                    Environment.Exit(1);
+                    return;
+                }
             }
 
             // Check write permissions for metadata file
@@ -80,14 +86,18 @@ public static class IndexCommand
 
             if (verbose)
             {
-                Console.WriteLine($"Indexing photos in: {targetDirectory}");
+                Console.WriteLine($"Indexing photos in {targetDirectories.Count} director{(targetDirectories.Count == 1 ? "y" : "ies")}:");
+                foreach (var dir in targetDirectories)
+                {
+                    Console.WriteLine($"  - {dir}");
+                }
             }
 
             Console.WriteLine("Indexing photos...");
 
             // Perform indexing with progress callback
             var indexer = new PhotoIndexer();
-            var index = await Task.Run(() => indexer.IndexDirectory(targetDirectory, metadataFile, updateBase,
+            var index = await Task.Run(() => indexer.IndexDirectories(targetDirectories, metadataFile, updateBase,
                 message => Console.WriteLine(message)));
             Console.WriteLine("Processing done.");
 

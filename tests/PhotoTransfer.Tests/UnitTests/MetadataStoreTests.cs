@@ -41,10 +41,10 @@ public class MetadataStoreTests
 
         // Assert
         Assert.That(File.Exists(filePath), Is.True);
-        
+
         var jsonContent = File.ReadAllText(filePath);
-        var deserializedIndex = JsonSerializer.Deserialize<PhotoIndex>(jsonContent);
-        
+        var deserializedIndex = JsonSerializer.Deserialize(jsonContent, PhotoTransfer.JsonContext.Default.PhotoIndex);
+
         Assert.That(deserializedIndex, Is.Not.Null);
         Assert.That(deserializedIndex.Version, Is.EqualTo("1.0.0"));
         Assert.That(deserializedIndex.Photos.Count, Is.EqualTo(1));
@@ -142,6 +142,7 @@ public class MetadataStoreTests
         {
             IndexedAt = DateTime.UtcNow,
             WorkingDirectory = _testDirectory,
+            WorkingDirectories = new List<string> { _testDirectory },
             Version = "1.0.0",
             TotalCount = 1,
             SupportedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".cr3", ".crw", ".cr2", ".avi", ".mp4" },

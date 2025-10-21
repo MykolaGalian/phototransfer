@@ -204,8 +204,8 @@ public class PhotoTransferTests
         // Act & Assert: Should throw exception for invalid metadata
         var transferService = new PhotoTransferService();
         var metadataStore = new MetadataStore();
-        
-        Assert.Throws<JsonException>(() => 
+
+        Assert.Throws<InvalidOperationException>(() =>
             metadataStore.LoadIndex(invalidMetadataPath),
             "Should throw exception for invalid JSON metadata");
     }
@@ -217,10 +217,49 @@ public class PhotoTransferTests
         var sourceDir = Path.Combine(_testDirectory, "missing-files");
         Directory.CreateDirectory(sourceDir);
 
-        var metadata = CreateBasicMetadata(sourceDir);
-        // Reference files that don't actually exist
-        metadata.photos[0].filePath = Path.Combine(sourceDir, "missing1.jpg");
-        metadata.photos[1].filePath = Path.Combine(sourceDir, "missing2.png");
+        // Create metadata with non-existent files
+        var metadata = new
+        {
+            indexedAt = DateTime.UtcNow,
+            workingDirectory = sourceDir,
+            workingDirectories = new[] { sourceDir },
+            version = "1.0.0",
+            totalCount = 2,
+            supportedExtensions = new[] { ".jpg", ".png" },
+            photos = new[]
+            {
+                new
+                {
+                    filePath = Path.Combine(sourceDir, "missing1.jpg"),
+                    fileName = "missing1.jpg",
+                    creationDate = new DateTime(2023, 6, 1),
+                    modificationDate = new DateTime(2023, 6, 1),
+                    effectiveDate = new DateTime(2023, 6, 1),
+                    fileSize = 1024L,
+                    extension = ".jpg",
+                    hash = "hash1",
+                    cameraModel = "",
+                    sourceDirectory = "",
+                    isTransferred = false,
+                    transferredTo = (string?)null
+                },
+                new
+                {
+                    filePath = Path.Combine(sourceDir, "missing2.png"),
+                    fileName = "missing2.png",
+                    creationDate = new DateTime(2023, 6, 15),
+                    modificationDate = new DateTime(2023, 6, 15),
+                    effectiveDate = new DateTime(2023, 6, 15),
+                    fileSize = 2048L,
+                    extension = ".png",
+                    hash = "hash2",
+                    cameraModel = "",
+                    sourceDirectory = "",
+                    isTransferred = false,
+                    transferredTo = (string?)null
+                }
+            }
+        };
 
         var metadataPath = Path.Combine(_testDirectory, ".phototransfer-index.json");
         File.WriteAllText(metadataPath, JsonSerializer.Serialize(metadata, new JsonSerializerOptions { WriteIndented = true }));
@@ -337,57 +376,58 @@ public class PhotoTransferTests
     {
         var metadata = new
         {
-            IndexedAt = DateTime.UtcNow,
-            WorkingDirectory = sourceDir,
-            Version = "1.0.0",
-            TotalCount = 3,
-            SupportedExtensions = new[] { ".jpg" },
-            Photos = new[]
+            indexedAt = DateTime.UtcNow,
+            workingDirectory = sourceDir,
+            workingDirectories = new[] { sourceDir },
+            version = "1.0.0",
+            totalCount = 3,
+            supportedExtensions = new[] { ".jpg" },
+            photos = new[]
             {
                 new
                 {
-                    FilePath = Path.Combine(sourceDir, "folder1", "vacation.jpg"),
-                    FileName = "vacation.jpg",
-                    CreationDate = new DateTime(2023, 8, 1),
-                    ModificationDate = new DateTime(2023, 8, 1),
-                    EffectiveDate = new DateTime(2023, 8, 1),
-                    FileSize = 1000L,
-                    Extension = ".jpg",
-                    Hash = "hash1",
-                    CameraModel = "",
-                    SourceDirectory = "",
-                    IsTransferred = false,
-                    TransferredTo = (string?)null
+                    filePath = Path.Combine(sourceDir, "folder1", "vacation.jpg"),
+                    fileName = "vacation.jpg",
+                    creationDate = new DateTime(2023, 8, 1),
+                    modificationDate = new DateTime(2023, 8, 1),
+                    effectiveDate = new DateTime(2023, 8, 1),
+                    fileSize = 1000L,
+                    extension = ".jpg",
+                    hash = "hash1",
+                    cameraModel = "",
+                    sourceDirectory = "",
+                    isTransferred = false,
+                    transferredTo = (string?)null
                 },
                 new
                 {
-                    FilePath = Path.Combine(sourceDir, "folder2", "vacation.jpg"),
-                    FileName = "vacation.jpg",
-                    CreationDate = new DateTime(2023, 8, 15),
-                    ModificationDate = new DateTime(2023, 8, 15),
-                    EffectiveDate = new DateTime(2023, 8, 15),
-                    FileSize = 2000L,
-                    Extension = ".jpg",
-                    Hash = "hash2",
-                    CameraModel = "",
-                    SourceDirectory = "",
-                    IsTransferred = false,
-                    TransferredTo = (string?)null
+                    filePath = Path.Combine(sourceDir, "folder2", "vacation.jpg"),
+                    fileName = "vacation.jpg",
+                    creationDate = new DateTime(2023, 8, 15),
+                    modificationDate = new DateTime(2023, 8, 15),
+                    effectiveDate = new DateTime(2023, 8, 15),
+                    fileSize = 2000L,
+                    extension = ".jpg",
+                    hash = "hash2",
+                    cameraModel = "",
+                    sourceDirectory = "",
+                    isTransferred = false,
+                    transferredTo = (string?)null
                 },
                 new
                 {
-                    FilePath = Path.Combine(sourceDir, "folder3", "vacation.jpg"),
-                    FileName = "vacation.jpg",
-                    CreationDate = new DateTime(2023, 8, 30),
-                    ModificationDate = new DateTime(2023, 8, 30),
-                    EffectiveDate = new DateTime(2023, 8, 30),
-                    FileSize = 3000L,
-                    Extension = ".jpg",
-                    Hash = "hash3",
-                    CameraModel = "",
-                    SourceDirectory = "",
-                    IsTransferred = false,
-                    TransferredTo = (string?)null
+                    filePath = Path.Combine(sourceDir, "folder3", "vacation.jpg"),
+                    fileName = "vacation.jpg",
+                    creationDate = new DateTime(2023, 8, 30),
+                    modificationDate = new DateTime(2023, 8, 30),
+                    effectiveDate = new DateTime(2023, 8, 30),
+                    fileSize = 3000L,
+                    extension = ".jpg",
+                    hash = "hash3",
+                    cameraModel = "",
+                    sourceDirectory = "",
+                    isTransferred = false,
+                    transferredTo = (string?)null
                 }
             }
         };
@@ -403,6 +443,7 @@ public class PhotoTransferTests
         {
             indexedAt = DateTime.UtcNow,
             workingDirectory = sourceDir,
+            workingDirectories = new[] { sourceDir },
             version = "1.0.0",
             totalCount = 3,
             supportedExtensions = new[] { ".jpg", ".png" },

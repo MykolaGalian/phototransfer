@@ -18,6 +18,7 @@ A .NET 9 console application for intelligent media organization by creation date
 
 ### 🗂️ **Intelligent Organization**
 - **Photo Indexing**: Recursively scan directories for supported image/video/audio formats
+- **Multiple Directory Support**: Index multiple directories in a single operation (comma-separated paths)
 - **Incremental Indexing**: Progressive processing with 5000-record saves and resume capability
 - **Date-based Organization**: Transfer media by year-month periods (YYYY-MM)
 - **Camera-based Grouping**: Automatically organize files by camera model within each period
@@ -146,6 +147,29 @@ dotnet publish src/PhotoTransfer/PhotoTransfer.csproj -c Release -r osx-x64 --se
 
 ## Usage
 
+### Getting Help
+
+View help information for commands:
+
+```bash
+# General help
+phototransfer --help
+
+# Help for index command
+phototransfer --index --help
+
+# Help for transfer command
+phototransfer --transfer --help
+
+# Help for statistics command
+phototransfer --stat --help
+
+# Help for types command
+phototransfer --types --help
+```
+
+**Note:** When using the legacy date pattern syntax (e.g., `--2012-01`), the `--help` flag may not work as expected since the date pattern is processed before command parsing. Use the standard syntax instead: `phototransfer --transfer 2012-01 --help`
+
 ### 1. Index Media Files
 
 First, create an index of all media files in a directory:
@@ -156,6 +180,9 @@ phototransfer --index
 
 # Index specific directory with progress
 phototransfer --index --directory /path/to/photos --verbose
+
+# Index multiple directories at once (comma-separated)
+phototransfer --index --directory "/path/to/photos,/path/to/videos,D:/Backup/Media" --verbose
 
 # Show statistics after indexing
 phototransfer --index --stat
@@ -218,7 +245,7 @@ phototransfer --transfer 2023-01 --target /path/to/output
 # Verbose transfer information
 phototransfer --transfer 2023-01 --verbose
 
-# Alternative syntax (legacy)
+# Alternative syntax (legacy, not recommended - --help doesn't work with this syntax)
 phototransfer --2023-01 --copy
 ```
 
@@ -261,18 +288,23 @@ All periods transfer complete - 135 files transferred successfully
 
 ### Command Options
 
+**All commands support `--help` flag to display detailed usage information.**
+
 #### Index Command (`--index`)
-- `--directory <path>`: Directory to index (default: current directory)
+- `--directory <path>`: Directory or directories to index (default: current directory). **Supports multiple directories separated by comma**, e.g., `--directory "path1,path2,path3"`
 - `--verbose`: Show detailed indexing information and progress
 - `--output <file>`: Output file for metadata (default: `.phototransfer-index.json`)
 - `--stat`: Show statistics table after indexing
 - `--update-base`: Incremental update - recreate base-index with new formats while preserving existing metadata. Use when adding support for new file formats to avoid reprocessing existing files
+- `--help`: Display help for this command
 
 #### Statistics Command (`--stat`)
 - `--input <file>`: Metadata file to read from (default: latest in current directory)
+- `--help`: Display help for this command
 
 #### File Types Command (`--types`)
 - `--directory <path>`: Directory to analyze (default: current directory)
+- `--help`: Display help for this command
 
 #### Transfer Command (`--transfer [<period>]`)
 - `<period>`: Date period in YYYY-MM format (optional when using --all)
@@ -281,6 +313,9 @@ All periods transfer complete - 135 files transferred successfully
 - `--dry-run`: Preview transfers without making changes
 - `--target <directory>`: Target directory (default: `./phototransfer`)
 - `--verbose`: Show detailed transfer information
+- `--help`: Display help for this command
+
+**Note:** The legacy date pattern syntax (`--YYYY-MM`) bypasses the standard command parser, so `--help` won't work with it. Use the standard syntax `--transfer YYYY-MM` instead.
 
 ## Examples
 
@@ -302,6 +337,23 @@ phototransfer --transfer --all --target ~/Organized --dry-run
 # 5. Perform actual transfer (copy mode) for all periods
 phototransfer --transfer --all --target ~/Organized --copy --verbose
 ```
+
+### Indexing Multiple Directories
+
+Index multiple directories in a single operation:
+
+```bash
+# Index photos from multiple sources (external drives, network shares, etc.)
+phototransfer --index --directory "/mnt/usb/Photos,/home/user/Pictures,/media/backup/Photos" --verbose
+
+# Index with custom output location
+phototransfer --index --directory "C:/Photos,D:/Videos,E:/Backup" --output ./combined-index.json --stat
+
+# Update existing index with files from new directories
+phototransfer --index --directory "~/Photos,~/Videos,~/Downloads" --update-base --verbose
+```
+
+**Note:** Metadata files (index files, base-index.json, and .progress files) are stored in the directory from which the application is run (current working directory), not in the indexed directories.
 
 ### Single Period Workflow
 
@@ -446,7 +498,8 @@ The indexing process creates incremental `.phototransfer-index-XXXX.json` files 
 ```json
 {
   "indexedAt": "2025-09-07T09:57:57.893Z",
-  "workingDirectory": "/path/to/photos", 
+  "workingDirectory": "/path/to/photos",
+  "workingDirectories": ["/path/to/photos", "/path/to/videos"],
   "version": "1.0.0",
   "totalCount": 150,
   "supportedExtensions": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".cr3", ".crw", ".cr2", ".avi", ".mp4", ".3gp", ".m4a", ".mov", ".jpg_128x96", ".mp4_128x96"],
@@ -482,11 +535,12 @@ A `base-index.json` file is created to track all discoverable files:
 {
   "createdAt": "2025-09-07T16:07:42.758Z",
   "workingDirectory": "/path/to/photos",
+  "workingDirectories": ["/path/to/photos", "/path/to/videos"],
   "totalFiles": 150,
   "filePaths": [
-    "/path/to/photo1.jpg",
-    "/path/to/video.mov",
-    "/path/to/audio.m4a"
+    "/path/to/photos/photo1.jpg",
+    "/path/to/videos/video.mov",
+    "/path/to/photos/audio.m4a"
   ]
 }
 ```

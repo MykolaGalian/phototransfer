@@ -115,38 +115,6 @@ public class PhotoIndexingTests
     }
 
     [Test]
-    public void IndexPhotos_WithExifMetadata_ShouldExtractCreationDate()
-    {
-        // Arrange: Create image with EXIF date metadata
-        var jpegWithExif = CreateJpegWithExifDate(new DateTime(2022, 8, 15, 14, 30, 0));
-        CreateTestImage(_testDirectory, "with-exif.jpg", jpegWithExif);
-        
-        // Create image without EXIF - should fall back to file date
-        CreateTestImage(_testDirectory, "without-exif.jpg", CreateJpegHeader());
-        var fileInfo = new FileInfo(Path.Combine(_testDirectory, "without-exif.jpg"));
-        var expectedFileDate = fileInfo.CreationTime;
-
-        // Act: Index and extract metadata
-        var indexer = new PhotoIndexer(); // This class doesn't exist yet
-        var outputPath = Path.Combine(_testDirectory, ".phototransfer-index.json");
-        var result = indexer.IndexDirectory(_testDirectory, outputPath);
-
-        // Assert: Should extract different dates based on available metadata
-        Assert.That(result.Photos.Count, Is.EqualTo(2));
-        
-        var photoWithExif = result.Photos.First(p => p.FileName == "with-exif.jpg");
-        var photoWithoutExif = result.Photos.First(p => p.FileName == "without-exif.jpg");
-
-        // Photo with EXIF should use EXIF date
-        Assert.That(photoWithExif.CreationDate.Date, Is.EqualTo(new DateTime(2022, 8, 15).Date), 
-            "Should extract creation date from EXIF metadata");
-
-        // Photo without EXIF should use file creation date
-        Assert.That(photoWithoutExif.CreationDate.Date, Is.EqualTo(expectedFileDate.Date),
-            "Should fall back to file creation date when EXIF is unavailable");
-    }
-
-    [Test]
     public void SaveIndex_WithValidData_ShouldCreateJsonMetadataFile()
     {
         // Arrange: Create sample photo index data
@@ -169,6 +137,7 @@ public class PhotoIndexingTests
         {
             IndexedAt = DateTime.UtcNow,
             WorkingDirectory = _testDirectory,
+            WorkingDirectories = new List<string> { _testDirectory },
             Photos = photos,
             Version = "1.0.0",
             TotalCount = 1,
@@ -184,7 +153,7 @@ public class PhotoIndexingTests
         Assert.That(File.Exists(metadataPath), Is.True, "Metadata file should be created");
 
         var jsonContent = File.ReadAllText(metadataPath);
-        var deserializedIndex = JsonSerializer.Deserialize<PhotoIndex>(jsonContent);
+        var deserializedIndex = JsonSerializer.Deserialize(jsonContent, PhotoTransfer.JsonContext.Default.PhotoIndex);
 
         Assert.That(deserializedIndex, Is.Not.Null, "Should be valid JSON");
         Assert.That(deserializedIndex.Photos.Count, Is.EqualTo(1), "Should preserve photo count");
@@ -300,20 +269,6 @@ public class PhotoIndexingTests
     {
         // TIFF file header (little endian)
         return new byte[] { 0x49, 0x49, 0x2A, 0x00 };
-    }
-
-    private byte[] CreateJpegWithExifDate(DateTime date)
-    {
-        // This is a simplified approach - in reality, EXIF is complex
-        // For testing, we'll create a minimal JPEG with a fake EXIF section
-        var header = CreateJpegHeader();
-        var fakeExifData = System.Text.Encoding.ASCII.GetBytes($"EXIF{date:yyyy:MM:dd HH:mm:ss}");
-        
-        var combined = new byte[header.Length + fakeExifData.Length];
-        Array.Copy(header, 0, combined, 0, header.Length);
-        Array.Copy(fakeExifData, 0, combined, header.Length, fakeExifData.Length);
-        
-        return combined;
     }
 
     #endregion

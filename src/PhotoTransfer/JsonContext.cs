@@ -13,7 +13,8 @@ namespace PhotoTransfer;
 [JsonSerializable(typeof(IndexingProgress))]
 [JsonSerializable(typeof(BaseIndex))]
 [JsonSerializable(typeof(string[]))]
+[JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(HashSet<string>))]
-internal partial class JsonContext : JsonSerializerContext
+public partial class JsonContext : JsonSerializerContext
 {
 }

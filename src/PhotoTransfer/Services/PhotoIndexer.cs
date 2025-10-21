@@ -17,15 +17,24 @@ public class PhotoIndexer
 
     public PhotoIndex IndexDirectory(string directoryPath, string outputFilePath, bool updateBase = false, Action<string>? progressCallback = null)
     {
-        if (!System.IO.Directory.Exists(directoryPath))
+        return IndexDirectories(new List<string> { directoryPath }, outputFilePath, updateBase, progressCallback);
+    }
+
+    public PhotoIndex IndexDirectories(List<string> directoryPaths, string outputFilePath, bool updateBase = false, Action<string>? progressCallback = null)
+    {
+        // Validate all directories exist
+        foreach (var directoryPath in directoryPaths)
         {
-            throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
+            if (!System.IO.Directory.Exists(directoryPath))
+            {
+                throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
+            }
         }
 
         var metadataStore = new MetadataStore();
-        var baseIndexPath = Path.Combine(Path.GetDirectoryName(outputFilePath) ?? directoryPath, "base-index.json");
+        var baseIndexPath = Path.Combine(Path.GetDirectoryName(outputFilePath) ?? Environment.CurrentDirectory, "base-index.json");
         var progressFilePath = Path.ChangeExtension(outputFilePath, ".progress");
-        
+
         // Phase 1: Create or load base index with all file paths
         var progress = metadataStore.LoadProgress(progressFilePath);
         if (progress == null || updateBase)
@@ -33,12 +42,12 @@ public class PhotoIndexer
             if (updateBase)
             {
                 progressCallback?.Invoke("Updating base index with new formats...");
-                progress = UpdateBaseIndexWithNewFormats(directoryPath, outputFilePath, baseIndexPath, metadataStore, progressCallback);
+                progress = UpdateBaseIndexWithNewFormats(directoryPaths, outputFilePath, baseIndexPath, metadataStore, progressCallback);
             }
             else
             {
                 progressCallback?.Invoke("Creating base index...");
-                progress = CreateBaseIndex(directoryPath, outputFilePath, baseIndexPath, progressCallback);
+                progress = CreateBaseIndex(directoryPaths, outputFilePath, baseIndexPath, progressCallback);
             }
             metadataStore.SaveProgress(progress, progressFilePath);
         }
@@ -47,11 +56,12 @@ public class PhotoIndexer
         return ProcessFilesIncrementally(progress, progressFilePath, metadataStore, progressCallback);
     }
 
-    private IndexingProgress CreateBaseIndex(string directoryPath, string outputFilePath, string baseIndexPath, Action<string>? progressCallback)
+    private IndexingProgress CreateBaseIndex(List<string> directoryPaths, string outputFilePath, string baseIndexPath, Action<string>? progressCallback)
     {
         var progress = new IndexingProgress
         {
-            WorkingDirectory = directoryPath,
+            WorkingDirectory = directoryPaths.Count > 0 ? directoryPaths[0] : Environment.CurrentDirectory,
+            WorkingDirectories = directoryPaths,
             StartedAt = DateTime.UtcNow,
             LastSavedAt = DateTime.UtcNow,
             CurrentOutputFile = outputFilePath,
@@ -59,45 +69,49 @@ public class PhotoIndexer
             ProcessedFilePaths = new HashSet<string>()
         };
 
-        // Collect all valid file paths
-        var allFiles = System.IO.Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
-        
-        foreach (var filePath in allFiles)
+        // Collect all valid file paths from all directories
+        foreach (var directoryPath in directoryPaths)
         {
-            var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            if (Array.Exists(_supportedExtensions, ext => ext == extension))
+            var allFiles = System.IO.Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
+
+            foreach (var filePath in allFiles)
             {
-                try
+                var extension = Path.GetExtension(filePath).ToLowerInvariant();
+                if (Array.Exists(_supportedExtensions, ext => ext == extension))
                 {
-                    var fileInfo = new FileInfo(filePath);
-                    if (fileInfo.Length > 0)
+                    try
                     {
-                        progress.AllFilePaths.Add(filePath);
+                        var fileInfo = new FileInfo(filePath);
+                        if (fileInfo.Length > 0)
+                        {
+                            progress.AllFilePaths.Add(filePath);
+                        }
                     }
-                }
-                catch
-                {
-                    // Skip files that can't be accessed
+                    catch
+                    {
+                        // Skip files that can't be accessed
+                    }
                 }
             }
         }
-        
+
         progress.TotalFiles = progress.AllFilePaths.Count;
-        
+
         // Save base index file
         var baseIndexContent = new BaseIndex
         {
             CreatedAt = DateTime.UtcNow,
-            WorkingDirectory = directoryPath,
+            WorkingDirectory = progress.WorkingDirectory,
+            WorkingDirectories = directoryPaths,
             TotalFiles = progress.TotalFiles,
             FilePaths = progress.AllFilePaths
         };
-        
+
         var baseIndexJson = JsonSerializer.Serialize(baseIndexContent, JsonContext.Default.BaseIndex);
         File.WriteAllText(baseIndexPath, baseIndexJson);
-        
-        progressCallback?.Invoke($"Base index created: {progress.TotalFiles} files found");
-        
+
+        progressCallback?.Invoke($"Base index created: {progress.TotalFiles} files found in {directoryPaths.Count} director{(directoryPaths.Count == 1 ? "y" : "ies")}");
+
         return progress;
     }
 
@@ -182,6 +196,7 @@ public class PhotoIndexer
         {
             IndexedAt = DateTime.UtcNow,
             WorkingDirectory = progress.WorkingDirectory,
+            WorkingDirectories = progress.WorkingDirectories,
             Version = "1.0.0",
             TotalCount = photos.Count,
             SupportedExtensions = _supportedExtensions,
@@ -190,17 +205,17 @@ public class PhotoIndexer
 
         // Clean up progress file (keep base-index for reference)
         metadataStore.DeleteProgress(progressFilePath);
-        
+
         return finalIndex;
     }
 
-    private IndexingProgress UpdateBaseIndexWithNewFormats(string directoryPath, string outputFilePath, string baseIndexPath, 
+    private IndexingProgress UpdateBaseIndexWithNewFormats(List<string> directoryPaths, string outputFilePath, string baseIndexPath,
         MetadataStore metadataStore, Action<string>? progressCallback)
     {
         // Load existing metadata from latest index file
-        var latestIndexFile = metadataStore.GetLatestIndexFile(Path.Combine(directoryPath, ".phototransfer-index.json"));
+        var latestIndexFile = metadataStore.GetLatestIndexFile(outputFilePath);
         PhotoIndex? existingIndex = null;
-        
+
         if (File.Exists(latestIndexFile))
         {
             try
@@ -216,7 +231,8 @@ public class PhotoIndexer
 
         var progress = new IndexingProgress
         {
-            WorkingDirectory = directoryPath,
+            WorkingDirectory = directoryPaths.Count > 0 ? directoryPaths[0] : Environment.CurrentDirectory,
+            WorkingDirectories = directoryPaths,
             StartedAt = DateTime.UtcNow,
             LastSavedAt = DateTime.UtcNow,
             CurrentOutputFile = outputFilePath,
@@ -224,29 +240,32 @@ public class PhotoIndexer
             ProcessedFilePaths = new HashSet<string>()
         };
 
-        // Collect all valid file paths with current supported extensions
-        var allFiles = System.IO.Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
-        
-        foreach (var filePath in allFiles)
+        // Collect all valid file paths with current supported extensions from all directories
+        foreach (var directoryPath in directoryPaths)
         {
-            var extension = Path.GetExtension(filePath).ToLowerInvariant();
-            if (Array.Exists(_supportedExtensions, ext => ext == extension))
+            var allFiles = System.IO.Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
+
+            foreach (var filePath in allFiles)
             {
-                try
+                var extension = Path.GetExtension(filePath).ToLowerInvariant();
+                if (Array.Exists(_supportedExtensions, ext => ext == extension))
                 {
-                    var fileInfo = new FileInfo(filePath);
-                    if (fileInfo.Length > 0)
+                    try
                     {
-                        progress.AllFilePaths.Add(filePath);
+                        var fileInfo = new FileInfo(filePath);
+                        if (fileInfo.Length > 0)
+                        {
+                            progress.AllFilePaths.Add(filePath);
+                        }
                     }
-                }
-                catch
-                {
-                    // Skip files that can't be accessed
+                    catch
+                    {
+                        // Skip files that can't be accessed
+                    }
                 }
             }
         }
-        
+
         progress.TotalFiles = progress.AllFilePaths.Count;
 
         // If we have existing metadata, mark those files as already processed
@@ -267,17 +286,18 @@ public class PhotoIndexer
         var baseIndexContent = new BaseIndex
         {
             CreatedAt = DateTime.UtcNow,
-            WorkingDirectory = directoryPath,
+            WorkingDirectory = progress.WorkingDirectory,
+            WorkingDirectories = directoryPaths,
             TotalFiles = progress.TotalFiles,
             FilePaths = progress.AllFilePaths
         };
-        
+
         var baseIndexJson = JsonSerializer.Serialize(baseIndexContent, JsonContext.Default.BaseIndex);
         File.WriteAllText(baseIndexPath, baseIndexJson);
-        
+
         var newFiles = progress.TotalFiles - progress.ProcessedFiles;
-        progressCallback?.Invoke($"Updated base index: {progress.TotalFiles} total files ({newFiles} new files to process)");
-        
+        progressCallback?.Invoke($"Updated base index: {progress.TotalFiles} total files ({newFiles} new files to process) in {directoryPaths.Count} director{(directoryPaths.Count == 1 ? "y" : "ies")}");
+
         return progress;
     }
 
@@ -287,6 +307,7 @@ public class PhotoIndexer
         {
             IndexedAt = DateTime.UtcNow,
             WorkingDirectory = progress.WorkingDirectory,
+            WorkingDirectories = progress.WorkingDirectories,
             Version = "1.0.0-intermediate",
             TotalCount = photos.Count,
             SupportedExtensions = _supportedExtensions,
