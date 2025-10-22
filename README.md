@@ -27,8 +27,12 @@ A .NET 9 console application for intelligent media organization by creation date
 - **Operation Modes**: Move (default) or copy files with dry-run support
 
 ### ⚡ **Performance & Reliability**
+- **Parallel File Transfer**: Copy up to 4 files simultaneously for faster operations
+- **Hash-based Integrity Verification**: Automatic SHA256 validation after copying ensures data integrity
+- **Smart Skip Logic**: Automatically skip files that already exist with matching hashes (perfect for resuming transfers)
+- **Batch Metadata Updates**: Single-write metadata updates instead of per-file writes (100-1000x faster for large transfers)
 - **Incremental Updates**: Add new formats without reprocessing existing files
-- **Progress Visualization**: Visual feedback during all operations
+- **Progress Visualization**: Real-time progress bar with transfer speed, ETA, and completion percentage
 - **Resume Capability**: Continue interrupted indexing from where it stopped
 - **Cross-platform**: Self-contained executables for Windows, Linux, and macOS
 
@@ -242,11 +246,52 @@ phototransfer --transfer 2023-01 --dry-run
 # Custom target directory
 phototransfer --transfer 2023-01 --target /path/to/output
 
-# Verbose transfer information
+# Verbose transfer information with progress bar
 phototransfer --transfer 2023-01 --verbose
 
 # Alternative syntax (legacy, not recommended - --help doesn't work with this syntax)
 phototransfer --2023-01 --copy
+```
+
+#### Transfer Period Range (NEW!)
+
+Transfer multiple consecutive periods at once using range syntax:
+
+```bash
+# Transfer all photos from January 2020 to December 2022
+phototransfer --transfer 2020-01..2022-12 --copy
+
+# Alternative range separators (all equivalent)
+phototransfer --transfer 2020-01:2022-12 --copy
+phototransfer --transfer "2020-01 to 2022-12" --copy
+
+# Verbose mode shows progress for each period in the range
+phototransfer --transfer 2020-01..2022-12 --copy --verbose
+
+# Dry-run to preview all periods in range
+phototransfer --transfer 2019-06..2020-08 --dry-run
+
+# With custom target directory
+phototransfer --transfer 2020-01..2023-12 --target D:\Archive --copy
+```
+
+**Example Output for Range Transfer:**
+```
+Processing range: 2020-01 to 2022-12 (36 periods)
+Found photos in 28 periods within range:
+  2020-01: 245 photos
+  2020-02: 183 photos
+  2020-03: 312 photos
+  ...
+  2022-12: 156 photos
+
+Processing period: 2020-01
+  Progress: 245/245 (100.0%) | 15.3 MB/s | 1.2 GB transferred | 12 skipped | ETA: 00:00:00
+Period 2020-01 transfer complete - 233 files transferred, 12 skipped (already exist)
+
+...
+
+Range transfer complete - 5432 files transferred successfully
 ```
 
 #### Transfer All Periods
@@ -267,11 +312,11 @@ phototransfer --transfer --all --dry-run
 phototransfer --transfer --all --target /path/to/organized --copy --verbose
 ```
 
-**Example Output:**
+**Example Output (Normal Mode):**
 ```
 Found photos in 3 periods:
   2023-01: 45 photos
-  2023-02: 67 photos  
+  2023-02: 67 photos
   2023-03: 23 photos
 
 Transferring 45 files for period 2023-01...
@@ -284,6 +329,26 @@ Transferring 23 files for period 2023-03...
 Period 2023-03 transfer complete - 23 files transferred successfully
 
 All periods transfer complete - 135 files transferred successfully
+```
+
+**Example Output (Verbose Mode with Progress):**
+```
+Found photos in 3 periods:
+  2023-01: 45 photos
+  2023-02: 67 photos
+  2023-03: 23 photos
+
+Transferring 45 files for period 2023-01...
+  Progress: 45/45 (100.0%) | 12.5 MB/s | 523 MB transferred | 3 skipped | ETA: 00:00:00
+Updating metadata for 42 transferred files...
+Period 2023-01 transfer complete - 42 files transferred, 3 skipped (already exist)
+
+Transferring 67 files for period 2023-02...
+  Progress: 67/67 (100.0%) | 14.8 MB/s | 892 MB transferred
+Updating metadata for 67 transferred files...
+Period 2023-02 transfer complete - 67 files transferred
+
+All periods transfer complete - 109 files transferred successfully
 ```
 
 ### Command Options
@@ -307,13 +372,24 @@ All periods transfer complete - 135 files transferred successfully
 - `--help`: Display help for this command
 
 #### Transfer Command (`--transfer [<period>]`)
-- `<period>`: Date period in YYYY-MM format (optional when using --all)
+- `<period>`: Date period in YYYY-MM format, range (YYYY-MM..YYYY-MM), or optional when using --all
+  - Single period: `2023-01`
+  - Range: `2020-01..2022-12` (also supports `:`, ` to `, `-to-` as separators)
+  - All periods: use `--all` flag
 - `--all`: Transfer all photos organized by their monthly periods
 - `--copy`: Copy files instead of moving them
 - `--dry-run`: Preview transfers without making changes
 - `--target <directory>`: Target directory (default: `./phototransfer`)
-- `--verbose`: Show detailed transfer information
+- `--verbose`: Show detailed transfer information with real-time progress bar
+  - Displays: completion %, transfer speed (MB/s), total transferred, files skipped, ETA
+  - Shows metadata update progress
 - `--help`: Display help for this command
+
+**Performance Features (automatic):**
+- Parallel file copying (4 files simultaneously)
+- Hash-based integrity verification after each copy
+- Smart skip for existing files with matching hashes
+- Batch metadata updates (single write operation)
 
 **Note:** The legacy date pattern syntax (`--YYYY-MM`) bypasses the standard command parser, so `--help` won't work with it. Use the standard syntax `--transfer YYYY-MM` instead.
 
@@ -397,6 +473,18 @@ phototransfer --transfer 2023-02 --target ~/Photos/2023 --copy
 phototransfer --transfer 2023-03 --target ~/Photos/2023 --copy
 ```
 
+#### Range approach (NEW! - faster and more convenient)
+```bash
+# Transfer entire year at once using range
+phototransfer --transfer 2023-01..2023-12 --target ~/Photos --copy --verbose
+
+# Transfer multiple years
+phototransfer --transfer 2020-01..2023-12 --target ~/Photos --copy --verbose
+
+# Just Q1 2023
+phototransfer --transfer 2023-01..2023-03 --target ~/Photos --copy
+```
+
 #### Automated approach (all periods at once)
 ```bash
 # Transfer all photos organized by periods automatically
@@ -407,6 +495,19 @@ phototransfer --transfer --all --target ~/Photos --copy
 # ~/Photos/2023-02/
 # ~/Photos/2023-03/
 # etc.
+```
+
+### Resume Interrupted Transfer
+
+The smart skip feature makes resuming transfers seamless:
+
+```bash
+# Initial transfer (interrupted halfway)
+phototransfer --transfer 2020-01..2023-12 --copy --verbose
+
+# Resume later - already transferred files are automatically skipped!
+phototransfer --transfer 2020-01..2023-12 --copy --verbose
+# Output will show: "X skipped (already exist)" for completed files
 ```
 
 ## File Organization

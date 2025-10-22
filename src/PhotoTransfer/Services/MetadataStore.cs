@@ -72,12 +72,36 @@ public class MetadataStore
     public void UpdatePhotoTransferStatus(string metadataFilePath, string photoHash, string transferredTo)
     {
         var index = LoadIndex(metadataFilePath);
-        
+
         var photo = index.Photos.FirstOrDefault(p => p.Hash == photoHash);
         if (photo != null)
         {
             photo.IsTransferred = true;
             photo.TransferredTo = transferredTo;
+        }
+
+        SaveIndex(index, metadataFilePath);
+    }
+
+    /// <summary>
+    /// Batch update transfer status for multiple photos. Much more efficient than individual updates.
+    /// </summary>
+    public void UpdatePhotoTransferStatusBatch(string metadataFilePath, Dictionary<string, string> hashToTargetPath)
+    {
+        if (hashToTargetPath.Count == 0)
+        {
+            return;
+        }
+
+        var index = LoadIndex(metadataFilePath);
+
+        foreach (var photo in index.Photos)
+        {
+            if (hashToTargetPath.TryGetValue(photo.Hash, out var transferredTo))
+            {
+                photo.IsTransferred = true;
+                photo.TransferredTo = transferredTo;
+            }
         }
 
         SaveIndex(index, metadataFilePath);

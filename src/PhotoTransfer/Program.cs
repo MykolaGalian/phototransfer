@@ -16,7 +16,7 @@ public class Program
             return await TransferCommand.HandleDatePattern(args);
         }
 
-        var rootCommand = new RootCommand("PhotoTransfer - Photo organization tool")
+        var rootCommand = new RootCommand("PhotoTransfer - Intelligent media organization tool with parallel transfer, integrity verification, and smart duplicate handling")
         {
             IndexCommand.Create(),
             TransferCommand.Create(),

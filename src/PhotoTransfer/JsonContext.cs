@@ -12,6 +12,7 @@ namespace PhotoTransfer;
 [JsonSerializable(typeof(List<DateSource>))]
 [JsonSerializable(typeof(IndexingProgress))]
 [JsonSerializable(typeof(BaseIndex))]
+[JsonSerializable(typeof(TransferProgress))]
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(List<string>))]
 [JsonSerializable(typeof(HashSet<string>))]

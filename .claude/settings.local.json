@@ -3,7 +3,12 @@
     "allow": [
       "Bash(dotnet test:*)",
       "Bash(dotnet build:*)",
-      "Bash(dotnet publish:*)"
+      "Bash(dotnet publish:*)",
+      "Bash(dir:*)",
+      "Bash(./phototransfer.exe:*)",
+      "Bash(pwsh:*)",
+      "Bash(findstr:*)",
+      "Bash(./publish/win-x64/phototransfer.exe:*)"
     ],
     "deny": [],
     "ask": []

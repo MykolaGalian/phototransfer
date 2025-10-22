@@ -45,6 +45,92 @@ public class TimePeriod
         return date.Year == Year && date.Month == Month;
     }
 
+    /// <summary>
+    /// Compares this period with another. Returns -1 if this is earlier, 0 if equal, 1 if later.
+    /// </summary>
+    public int CompareTo(TimePeriod other)
+    {
+        if (Year != other.Year)
+            return Year.CompareTo(other.Year);
+        return Month.CompareTo(other.Month);
+    }
+
+    /// <summary>
+    /// Checks if this period is within the specified range (inclusive)
+    /// </summary>
+    public bool IsInRange(TimePeriod start, TimePeriod end)
+    {
+        return CompareTo(start) >= 0 && CompareTo(end) <= 0;
+    }
+
+    /// <summary>
+    /// Generates all periods between start and end (inclusive)
+    /// </summary>
+    public static List<TimePeriod> GetRange(TimePeriod start, TimePeriod end)
+    {
+        var periods = new List<TimePeriod>();
+        var current = new TimePeriod(start.Year, start.Month);
+
+        while (current.CompareTo(end) <= 0)
+        {
+            periods.Add(new TimePeriod(current.Year, current.Month));
+
+            // Move to next month
+            if (current.Month == 12)
+            {
+                current = new TimePeriod(current.Year + 1, 1);
+            }
+            else
+            {
+                current = new TimePeriod(current.Year, current.Month + 1);
+            }
+        }
+
+        return periods;
+    }
+
+    /// <summary>
+    /// Parses a period range string like "2020-01..2022-12" or "2020-01:2022-12"
+    /// Returns null if not a range format
+    /// </summary>
+    public static (TimePeriod start, TimePeriod end)? ParseRange(string rangeString)
+    {
+        if (string.IsNullOrWhiteSpace(rangeString))
+            return null;
+
+        // Try different range separators
+        string[] separators = { "..", ":", " to ", "-to-" };
+
+        foreach (var separator in separators)
+        {
+            if (rangeString.Contains(separator))
+            {
+                var parts = rangeString.Split(separator, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2)
+                {
+                    try
+                    {
+                        var start = Parse(parts[0].Trim());
+                        var end = Parse(parts[1].Trim());
+
+                        if (start.CompareTo(end) > 0)
+                        {
+                            throw new FormatException("Start period must be before or equal to end period");
+                        }
+
+                        return (start, end);
+                    }
+                    catch
+                    {
+                        // Continue trying other separators
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
     public override string ToString()
     {
         return $"{Year:D4}-{Month:D2}";
