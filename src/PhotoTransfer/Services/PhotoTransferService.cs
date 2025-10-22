@@ -369,7 +369,8 @@ public class PhotoTransferService
     {
         var hashToPath = completedOperations
             .Where(op => op.Status == OperationStatus.Completed && op.ErrorMessage != "Skipped (already exists with same hash)")
-            .ToDictionary(op => op.Photo.Hash, op => op.TargetPath);
+            .GroupBy(op => op.Photo.Hash)
+            .ToDictionary(g => g.Key, g => g.First().TargetPath);
 
         if (hashToPath.Count > 0)
         {
